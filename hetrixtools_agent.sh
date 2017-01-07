@@ -170,4 +170,4 @@ DATA="$OS|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$RAMSize|$RAM|$DISKSize|$DISK|$RX|$
 POST="v=$VERSION&s=$SID&d=$DATA"
 
 # Post collected data
-wget -qO- --post-data "$POST" https://hetrixtools.com/s.php &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" https://hetrixtools.com/s.php &> /dev/null
