@@ -19,6 +19,9 @@
 #
 #
 
+# Set PATH
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 # Check if install script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
@@ -61,7 +64,7 @@ echo "... done."
 
 # Fetching new agent
 echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://hetrixtools.com/resources/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh --no-check-certificate https://raw.github.com/hetrixtools/agent/master/hetrixtools_agent.sh
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
