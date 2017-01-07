@@ -73,7 +73,7 @@ echo "... done."
 # Let HetrixTools platform know uninstall has been completed
 echo "Letting HetrixTools platform know the uninstallation has been completed..."
 POST="v=uninstall&s=$SID"
-wget -qO- --post-data "$POST" https://hetrixtools.com/s.php &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" https://hetrixtools.com/s.php &> /dev/null
 echo "... done."
 
 # All done
