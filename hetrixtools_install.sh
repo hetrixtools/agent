@@ -61,7 +61,7 @@ echo "... done."
 
 # Fetching new agent
 echo "Fetching the new agent..."
-wget -qO /etc/hetrixtools/hetrixtools_agent.sh https://hetrixtools.com/resources/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://hetrixtools.com/resources/hetrixtools_agent.sh
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
