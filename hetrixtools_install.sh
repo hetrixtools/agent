@@ -126,7 +126,7 @@ echo "... done."
 # Let HetrixTools platform know install has been completed
 echo "Letting HetrixTools platform know the installation has been completed..."
 POST="v=install&s=$SID"
-wget -qO- --post-data "$POST" https://hetrixtools.com/s.php &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" https://hetrixtools.com/s.php &> /dev/null
 echo "... done."
 
 # All done
