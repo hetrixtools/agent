@@ -78,16 +78,9 @@ echo "Inserting Server ID (SID) into agent config..."
 sed -i "s/SIDPLACEHOLDER/$SID/" /etc/hetrixtools/hetrixtools_agent.sh
 echo "... done."
 
-# Find public network interface for network usage statistics
-echo "Finding your public IP address..."
-ExternalIP=$(ip route get 8.8.8.8 | awk '{ print $NF; exit }')
-echo "... done."
-
 # Finding the public network interface name, based on your public IP address
 echo "Finding your public network interface name..."
-NetworkInterface=$(netstat -ie | grep -B1 "$ExternalIP" | awk '{ print $1 }')
-NetworkInterface=$(echo $NetworkInterface | awk -F":" '{ print $1 }')
-NetworkInterface=$(echo $NetworkInterface | awk -F" " '{ print $1 }')
+NetworkInterface=$(ip route | grep $(ip route get 8.8.8.8 | awk '{ print $NF; exit }') | awk '{ print $3 }')
 echo "... done."
 
 # Inserting the network interface name into the agent configuration
