@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.02 
+#	version 1.03
 #	Copyright 2016 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -27,7 +27,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent Version (do not change)
-VERSION="1.02"
+VERSION="1.03"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -171,6 +171,9 @@ TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
 DATA="$OS|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$RAMSize|$RAM|$DISKSize|$DISK|$RX|$TX"
 # Post string
 POST="v=$VERSION&s=$SID&d=$DATA"
+
+# Logging entire post string (for debugging)
+echo $POST > /etc/hetrixtools/hetrixtools_agent.log
 
 # Post collected data
 wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://hetrixtools.com/s.php &> /dev/null

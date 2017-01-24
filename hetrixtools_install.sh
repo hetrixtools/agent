@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.02
+#	version 1.03
 #	Copyright 2016 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -25,7 +25,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Check if install script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "Please run the install script as root."
+  then echo "ERROR: Please run the install script as root."
   exit
 fi
 echo "... done."
@@ -36,14 +36,20 @@ SID=$1
 # Make sure SID is not empty
 echo "Checking Server ID (SID)..."
 if [ -z "$SID" ]
-	then echo "Please run the installer with the 32 character code (SID) after it."
+	then echo "ERROR: First parameter missing."
 	exit
 fi
 echo "... done."
 
+# Check if user has selected to run agent as 'root' or as 'hetrixtools' user
+if [ -z "$2" ]
+	then echo "ERROR: Second parameter missing."
+	exit
+fi
+
 # Check if system has crontab
 echo "Checking cronjobs..."
-command -v crontab >/dev/null 2>&1 || { echo "Cronjobs are required to run this agent." >&2; exit 1; }
+command -v crontab >/dev/null 2>&1 || { echo "ERROR: Cronjobs are required to run this agent." >&2; exit 1; }
 echo "... done."
 
 # Remove old agent (if exists)
@@ -112,10 +118,22 @@ else
 fi
 echo "... done."
 
-# Handle cronjobs
-echo "Sorting out cronjobs..."
+# Removing old cronjob (if exists)
+echo "Removing any old hetrixtools cronjob, if exists..."
+crontab -u root -l | grep -v 'hetrixtools'  | crontab -u root - >/dev/null 2>&1
 crontab -u hetrixtools -l | grep -v 'hetrixtools'  | crontab -u hetrixtools - >/dev/null 2>&1
-crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh > /dev/null 2>&1"; } | crontab -u hetrixtools - >/dev/null 2>&1
+echo "... done."
+
+# Setup the new cronjob to run the agent either as 'root' or as 'hetrixtools' user, depending on client's installation choice.
+# Default is running the agent as 'hetrixtools' user, unless chosen otherwise by the client when fetching the installation code from the hetrixtools website.
+if [ "$2" -eq "1" ]
+then
+	echo "Setting up the new cronjob as 'root' user..."
+	crontab -u root -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh > /etc/hetrixtools/hetrixtools_cron.log"; } | crontab -u root - >/dev/null 2>&1
+else
+	echo "Setting up the new cronjob as 'hetrixtools' user..."
+	crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh > /etc/hetrixtools/hetrixtools_cron.log"; } | crontab -u hetrixtools - >/dev/null 2>&1
+fi
 echo "... done."
 
 # Cleaning up install file

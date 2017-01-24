@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Uninstall Script
-#	version 1.02
+#	version 1.03
 #	Copyright 2016 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -63,6 +63,12 @@ then
 else
 	echo "The hetrixtools user doesn't exist..."
 fi
+echo "... done."
+
+# Removing cronjob (if exists)
+echo "Removing any hetrixtools cronjob, if exists..."
+crontab -u root -l | grep -v 'hetrixtools'  | crontab -u root - >/dev/null 2>&1
+crontab -u hetrixtools -l | grep -v 'hetrixtools'  | crontab -u hetrixtools - >/dev/null 2>&1
 echo "... done."
 
 # Cleaning up uninstall file
