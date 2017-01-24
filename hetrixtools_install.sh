@@ -89,6 +89,11 @@ sed -i "s/ETHPLACEHOLDER/$NetworkInterface/" /etc/hetrixtools/hetrixtools_agent.
 sed -i 's/\r$//' /etc/hetrixtools/hetrixtools_agent.sh
 echo "... done."
 
+# Killing any running hetrixtools agents
+echo "Making sure no hetrixtools agent scripts are currently running..."
+ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
+echo "... done."
+
 # Checking if hetrixtools user exists
 echo "Checking if hetrixtool user already exists..."
 if id -u hetrixtools >/dev/null 2>&1
