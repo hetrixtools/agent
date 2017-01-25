@@ -118,8 +118,8 @@ echo "... done."
 
 # Removing old cronjob (if exists)
 echo "Removing any old hetrixtools cronjob, if exists..."
-crontab -u root -l | grep -v 'hetrixtools'  | crontab -u root - >/dev/null 2>&1
-crontab -u hetrixtools -l | grep -v 'hetrixtools'  | crontab -u hetrixtools - >/dev/null 2>&1
+crontab -u root -l | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
+crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
 echo "... done."
 
 # Setup the new cronjob to run the agent either as 'root' or as 'hetrixtools' user, depending on client's installation choice.

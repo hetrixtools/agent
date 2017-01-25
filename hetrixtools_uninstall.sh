@@ -72,8 +72,8 @@ echo "... done."
 
 # Removing cronjob (if exists)
 echo "Removing any hetrixtools cronjob, if exists..."
-crontab -u root -l | grep -v 'hetrixtools'  | crontab -u root - >/dev/null 2>&1
-crontab -u hetrixtools -l | grep -v 'hetrixtools'  | crontab -u hetrixtools - >/dev/null 2>&1
+crontab -u root -l | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
+crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
 echo "... done."
 
 # Cleaning up uninstall file
