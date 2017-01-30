@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.03
+#	version 1.04
 #	Copyright 2016 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -80,7 +80,12 @@ echo "... done."
 
 # Finding the public network interface name, based on your public IP address
 echo "Finding your public network interface name..."
-NetworkInterface=$(ip route | grep $(ip route get 8.8.8.8 | awk '{ print $NF; exit }') | awk '{ print $3 }')
+NetworkInterface=$(ip route get 8.8.8.8 | awk '{ print $(NF-2); exit }')
+# Fallback on eth0 if couldn't find interface name
+if [ -z "$NetworkInterface" ]
+then
+	NetworkInterface="eth0"
+fi
 echo "... done."
 
 # Inserting the network interface name into the agent configuration

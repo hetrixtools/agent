@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.03
+#	version 1.04
 #	Copyright 2016 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -27,7 +27,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent Version (do not change)
-VERSION="1.03"
+VERSION="1.04"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -59,7 +59,7 @@ if [ -z "$HTProcesses" ]
 then
 	HTProcesses=0
 fi
-if(( $HTProcesses > 30 ))
+if [ "$HTProcesses" -gt 30 ]
 then
 	ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
 fi
@@ -119,7 +119,7 @@ do
 	then
 		M=0
 	fi
-	if (( $MM > $M )) 
+	if [ "$MM" -gt "$M" ] 
 	then
 		break
 	fi
