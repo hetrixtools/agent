@@ -117,7 +117,7 @@ do
 	MM=$(echo `date +%M` | sed 's/^0*//')
 	if [ -z "$MM" ]
 	then
-		M=0
+		MM=0
 	fi
 	if [ "$MM" -gt "$M" ] 
 	then
