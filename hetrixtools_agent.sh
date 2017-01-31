@@ -126,8 +126,8 @@ do
 done
 
 # Get Operating System
-# Check if it's Ubuntu
-if [ -f /etc/lsb-release ]
+# Check via lsb_release if possible
+if command -v "lsb_release" > /dev/null 2>&1
 then
 	OS=$(lsb_release -s -d)
 # Check if it's Debian
