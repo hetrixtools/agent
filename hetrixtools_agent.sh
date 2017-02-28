@@ -59,7 +59,7 @@ if [ -z "$HTProcesses" ]
 then
 	HTProcesses=0
 fi
-if [ "$HTProcesses" -gt 30 ]
+if [ "$HTProcesses" -gt 300 ]
 then
 	ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
 fi
