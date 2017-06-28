@@ -158,9 +158,9 @@ RAMSize=$(echo "$RAMSize" | awk -F" " '{ print $1 }')
 # Calculate average RAM Usage
 RAM=$(echo | awk "{ print $tRAM / $X }")
 # Get disk size
-DISKSize=$(echo $(df -h "$DiskPartition" | awk '{print $2}' | tail -n 1))
+DISKSize=$(df -h "$DiskPartition" | awk '{print $2}' | tail -n 1)
 # Get disk usage
-DISK=$(echo $(df -h "$DiskPartition" | awk '{print $5}' | tail -n 1 | sed 's/\%//g'))
+DISK=$(df -h "$DiskPartition" | awk '{print $(NF-1)}' | tail -n 1 | sed 's/\%//g')
 # Calculate Network Usage (bytes)
 RX=$(echo | awk "{ print $tRX / $X }")
 RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
