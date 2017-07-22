@@ -75,7 +75,7 @@ then
 fi
 
 # Get the initial network usage
-T=$(cat /proc/net/dev | grep "$NetworkInterface" | awk '{print $2"|"$10}')
+T=$(cat /proc/net/dev | grep "$NetworkInterface:" | awk '{print $2"|"$10}')
 START=$(date +%s)
 aRX=$(echo $T | awk -F "|" '{print $1}')
 aTX=$(echo $T | awk -F "|" '{print $2}')
@@ -95,7 +95,7 @@ do
 	RAM=$(echo | awk "{ print 100 - $RAM }")
 	tRAM=$(echo | awk "{ print $tRAM + $RAM }")
 	# Get Network Usage
-	T=$(cat /proc/net/dev | grep "$NetworkInterface" | awk '{print $2"|"$10}')
+	T=$(cat /proc/net/dev | grep "$NetworkInterface:" | awk '{print $2"|"$10}')
 	END=$(date +%s)
 	TIMEDIFF=$(echo | awk "{ print $END - $START }")
 	START=$(date +%s)
