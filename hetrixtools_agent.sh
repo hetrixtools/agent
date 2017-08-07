@@ -72,6 +72,8 @@ M=$(echo `date +%M` | sed 's/^0*//')
 if [ -z "$M" ]
 then
 	M=0
+	# Clear the hetrixtools_cron.log every hour
+	rm -f /etc/hetrixtools/hetrixtools_cron.log
 fi
 
 # Get the initial network usage
