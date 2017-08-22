@@ -47,9 +47,10 @@ if [ -z "$2" ]
 	exit
 fi
 
-# Check if system has crontab
-echo "Checking cronjobs..."
-command -v crontab >/dev/null 2>&1 || { echo "ERROR: Cronjobs are required to run this agent." >&2; exit 1; }
+# Check if system has crontab and wget
+echo "Checking for crontab and wget"
+command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent." >&2; exit 1; }
+command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
 echo "... done."
 
 # Remove old agent (if exists)
