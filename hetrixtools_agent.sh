@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.04
-#	Copyright 2016 @  HetrixTools
+#	version 1.05
+#	Copyright 2017 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -27,30 +27,41 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent Version (do not change)
-VERSION="1.04"
+VERSION="1.05"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
 SID="SIDPLACEHOLDER"
 
-# How frequently should the data be collected (in seconds) [recommended: 3-5, min: 2, max: 15]
+# How frequently should the data be collected (do not modify this, unless instructed to do so)
 CollectEveryXSeconds=3
 
 # Runtime, in seconds (do not modify this, unless instructed to do so)
 Runtime=60
-
-# Partition to get disk usage for
-# * you can modify this value, if you wish to track the disk usage of any other partition on the server
-DiskPartition="/"
 
 # Network Interface
 # * our agent will try to find your public network interface during installation
 # * however, you can manually specify a network interface name below, in order to gather usage statistics from that particular one instead
 NetworkInterface="ETHPLACEHOLDER"
 
+# Check Services
+# * separate service names by comma (,) with a maximum of 10 services to be monitored (ie: "ssh,mysql,apache2,nginx")
+# * NOTE: this will only check if the service is running, not its functionality
+CheckServices=""
+
 ################################################
 ## CAUTION: Do not edit any of the code below ##
 ################################################
+
+# Check service status function
+function servicestatus() {
+	if (( $(ps -ef | grep -v grep | grep $1 | wc -l) < 1 ))
+	then
+		echo "$(echo -ne "$1" | base64),0"
+	else
+		echo "$(echo -ne "$1" | base64),1"
+	fi
+}
 
 # Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
 # so when a new cycle starts there shouldn't be any lingering agents around, but just in case, so they won't stack)
@@ -90,6 +101,9 @@ do
 	# Get CPU Load
 	CPU=$(echo $[100-$( echo "$VMSTAT" | awk '{print $15}')])
 	tCPU=$(echo | awk "{ print $tCPU + $CPU }")
+	# Get IO Wait
+	IOW=$( echo "$VMSTAT" | awk '{print $16}')
+	tIOW=$(echo | awk "{ print $tIOW + $IOW }")
 	# Get RAM Usage
 	aRAM=$( echo "$VMSTAT" | awk '{print $4 + $5 + $6}')
 	bRAM=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -145,6 +159,8 @@ else
 	OS="$(uname -s) $(uname -r)"
 fi
 OS=$(echo -ne "$OS" | base64)
+# Get the server uptime
+Uptime=$(cat /proc/uptime | awk '{ print $1 }')
 # Get CPU model
 CPUModel=$(cat /proc/cpuinfo | grep 'model name' | uniq | awk -F": " '{ print $2 }')
 CPUModel=$(echo -ne "$CPUModel" | base64)
@@ -154,23 +170,36 @@ CPUSpeed=$(cat /proc/cpuinfo | grep 'cpu MHz' | uniq | awk -F": " '{ print $2 }'
 CPUCores=$(cat /proc/cpuinfo | grep processor | wc -l)
 # Calculate average CPU Usage
 CPU=$(echo | awk "{ print $tCPU / $X }")
+# Calculate IO Wait
+IOW=$(echo | awk "{ print $tIOW / $X }")
 # Get system memory (RAM)
-RAMSize=$(cat /proc/meminfo | grep MemTotal | awk -F":" '{ print $2 }' | xargs)
-RAMSize=$(echo "$RAMSize" | awk -F" " '{ print $1 }')
-# Calculate average RAM Usage
+RAMSize=$(cat /proc/meminfo | grep ^MemTotal: | awk '{print $2}')
+# Calculate RAM Usage
 RAM=$(echo | awk "{ print $tRAM / $X }")
-# Get disk size
-DISKSize=$(df -h "$DiskPartition" | awk '{print $2}' | tail -n 1)
-# Get disk usage
-DISK=$(df -h "$DiskPartition" | awk '{print $(NF-1)}' | tail -n 1 | sed 's/\%//g')
+# Get the Swap Size
+SwapSize=$(cat /proc/meminfo | grep ^SwapTotal: | awk '{print $2}')
+# Calculate Swap Usage
+SwapFree=$(cat /proc/meminfo | grep ^SwapFree: | awk '{print $2}')
+Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
+# Get all disks usage
+DISKs=$(echo -ne $(df -B1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3";" }') | base64)
 # Calculate Network Usage (bytes)
 RX=$(echo | awk "{ print $tRX / $X }")
 RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
 TX=$(echo | awk "{ print $tTX / $X }")
 TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
+# Check Services (if any are set to be checked)
+if [ ! -z "$CheckServices" ]
+then
+	IFS=',' read -r -a CheckServicesArray <<< "$CheckServices"
+	for i in "${CheckServicesArray[@]}"
+	do
+		ServiceStatusString="$ServiceStatusString"$(servicestatus "$i")";"
+	done
+fi
 
 # Bundle collected data
-DATA="$OS|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$RAMSize|$RAM|$DISKSize|$DISK|$RX|$TX"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString"
 # Post string
 POST="v=$VERSION&s=$SID&d=$DATA"
 
@@ -178,4 +207,4 @@ POST="v=$VERSION&s=$SID&d=$DATA"
 echo $POST > /etc/hetrixtools/hetrixtools_agent.log
 
 # Post collected data
-wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://hetrixtools.com/s.php &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
