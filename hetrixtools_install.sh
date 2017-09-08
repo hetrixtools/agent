@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.04
-#	Copyright 2016 @  HetrixTools
+#	version 1.05
+#	Copyright 2017 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -151,7 +151,7 @@ echo "... done."
 # Let HetrixTools platform know install has been completed
 echo "Letting HetrixTools platform know the installation has been completed..."
 POST="v=install&s=$SID"
-wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://hetrixtools.com/s.php &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
 echo "... done."
 
 # All done
