@@ -3,7 +3,7 @@
 #
 #	HetrixTools Server Monitoring Agent - Install Script
 #	version 1.05
-#	Copyright 2017 @  HetrixTools
+#	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -48,7 +48,7 @@ if [ -z "$2" ]
 fi
 
 # Check if system has crontab and wget
-echo "Checking for crontab and wget"
+echo "Checking for crontab and wget..."
 command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent." >&2; exit 1; }
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
 echo "... done."
@@ -79,6 +79,15 @@ echo "Inserting Server ID (SID) into agent config..."
 sed -i "s/SIDPLACEHOLDER/$SID/" /etc/hetrixtools/hetrixtools_agent.sh
 echo "... done."
 
+# Check if any services are to be monitored
+echo "Checking if any services should be monitored..."
+if [ "$3" != "0" ]
+then
+	echo "Services found, inserting them into the agent config..."
+	sed -i "s/CheckServices=\"\"/CheckServices=\"$3\"/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
+
 # Finding the public network interface name, based on your public IP address
 echo "Finding your public network interface name..."
 NetworkInterface=$(ip route get 8.8.8.8 | grep dev | awk -F 'dev' '{ print $2 }' | awk '{ print $1 }')
@@ -101,7 +110,7 @@ ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
 echo "... done."
 
 # Checking if hetrixtools user exists
-echo "Checking if hetrixtool user already exists..."
+echo "Checking if hetrixtools user already exists..."
 if id -u hetrixtools >/dev/null 2>&1
 then
 	echo "The hetrixtools user already exists, killing its processes..."
