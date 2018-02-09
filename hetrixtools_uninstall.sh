@@ -33,14 +33,6 @@ echo "... done."
 # Fetch Server Unique ID
 SID=$1
 
-# Make sure SID is not empty
-echo "Checking Server ID (SID)..."
-if [ -z "$SID" ]
-	then echo "Please run the uninstaller with the 32 character code (SID) after it."
-	exit
-fi
-echo "... done."
-
 # Remove old agent (if exists)
 echo "Checking if hetrixtools agent folder exists..."
 if [ -d /etc/hetrixtools ]
