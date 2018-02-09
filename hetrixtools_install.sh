@@ -163,5 +163,16 @@ POST="v=install&s=$SID"
 wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
 echo "... done."
 
+# Start the agent
+if [ "$2" -eq "1" ]
+then
+	echo "Starting the agent under the 'root' user..."
+	bash /etc/hetrixtools/hetrixtools_agent.sh & 
+else
+	echo "Starting the agent under the 'hetrixtools' user..."
+	sudo -u hetrixtools bash /etc/hetrixtools/hetrixtools_agent.sh & 
+fi
+echo "... done."
+
 # All done
 echo "HetrixTools agent installation completed."
