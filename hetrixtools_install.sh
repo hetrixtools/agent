@@ -167,10 +167,10 @@ echo "... done."
 if [ "$2" -eq "1" ]
 then
 	echo "Starting the agent under the 'root' user..."
-	bash /etc/hetrixtools/hetrixtools_agent.sh & 
+	bash /etc/hetrixtools/hetrixtools_agent.sh &> /dev/null
 else
 	echo "Starting the agent under the 'hetrixtools' user..."
-	sudo -u hetrixtools bash /etc/hetrixtools/hetrixtools_agent.sh & 
+	sudo -u hetrixtools bash /etc/hetrixtools/hetrixtools_agent.sh &> /dev/null
 fi
 echo "... done."
 
