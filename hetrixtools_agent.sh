@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.05
-#	Copyright 2017 @  HetrixTools
+#	version 1.5.2
+#	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -27,7 +27,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent Version (do not change)
-VERSION="1.05"
+VERSION="1.5.2"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -182,7 +182,7 @@ SwapSize=$(cat /proc/meminfo | grep ^SwapTotal: | awk '{print $2}')
 SwapFree=$(cat /proc/meminfo | grep ^SwapFree: | awk '{print $2}')
 Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
 # Get all disks usage
-DISKs=$(echo -ne $(df -B1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3";" }') | base64)
+DISKs=$(echo -ne $(df -B1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | base64)
 # Calculate Network Usage (bytes)
 RX=$(echo | awk "{ print $tRX / $X }")
 RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
