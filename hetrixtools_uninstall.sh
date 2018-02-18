@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Uninstall Script
-#	version 1.05
-#	Copyright 2017 @  HetrixTools
+#	version 1.5.2
+#	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
