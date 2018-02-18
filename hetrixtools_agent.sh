@@ -182,7 +182,7 @@ SwapSize=$(cat /proc/meminfo | grep ^SwapTotal: | awk '{print $2}')
 SwapFree=$(cat /proc/meminfo | grep ^SwapFree: | awk '{print $2}')
 Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
 # Get all disks usage
-DISKs=$(echo -ne $(df -B1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | base64)
+DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | base64)
 # Calculate Network Usage (bytes)
 RX=$(echo | awk "{ print $tRX / $X }")
 RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
