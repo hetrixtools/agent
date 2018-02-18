@@ -2,7 +2,7 @@
 
 Documentation available here: https://docs.hetrixtools.com/category/server-monitor/
 
-Version 1.05 ChangeLog:
+Version 1.5.x ChangeLog:
 - System Uptime
 - IO Wait
 - Swap Usage
