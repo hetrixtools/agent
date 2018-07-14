@@ -55,11 +55,22 @@ CheckServices=""
 
 # Check service status function
 function servicestatus() {
-	if (( $(ps -ef | grep -v grep | grep $1 | wc -l) < 1 ))
+	# Check if we have systemctl
+	if command -v "systemctl" > /dev/null 2>&1
 	then
-		echo "$(echo -ne "$1" | base64),0"
+		if $(systemctl is-active --quiet $1)
+		then
+			echo "$(echo -ne "$1" | base64),1"
+		else
+			echo "$(echo -ne "$1" | base64),0"
+		fi
 	else
-		echo "$(echo -ne "$1" | base64),1"
+		if (( $(ps -ef | grep -v grep | grep $1 | wc -l) > 0 ))
+		then
+			echo "$(echo -ne "$1" | base64),1"
+		else
+			echo "$(echo -ne "$1" | base64),0"
+		fi
 	fi
 }
 
