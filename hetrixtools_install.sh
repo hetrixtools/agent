@@ -88,6 +88,15 @@ then
 fi
 echo "... done."
 
+# Check if software RAID should be monitored
+echo "Checking if software RAID should be monitored..."
+if [ "$4" != "0" ]
+then
+	echo "Enabling software RAID monitoring in the agent config..."
+	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
+
 # Finding the public network interface name, based on your public IP address
 echo "Finding your public network interface name..."
 NetworkInterface=$(ip route get 8.8.8.8 | grep dev | awk -F 'dev' '{ print $2 }' | awk '{ print $1 }')
