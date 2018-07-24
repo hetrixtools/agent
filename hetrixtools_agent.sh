@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.2
+#	version 1.5.3
 #	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -27,7 +27,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent Version (do not change)
-VERSION="1.5.2"
+VERSION="1.5.3"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -48,6 +48,12 @@ NetworkInterface="ETHPLACEHOLDER"
 # * separate service names by comma (,) with a maximum of 10 services to be monitored (ie: "ssh,mysql,apache2,nginx")
 # * NOTE: this will only check if the service is running, not its functionality
 CheckServices=""
+
+# Check Software RAID Health
+# * checks the status/health of any software RAID (mdadm) setup on the server
+# * agent must be run as 'root' or privileged user to be able to fetch mdadm status
+# * 0 - OFF (default) | 1 - ON
+CheckSoftRAID=0
 
 ################################################
 ## CAUTION: Do not edit any of the code below ##
@@ -208,9 +214,24 @@ then
 		ServiceStatusString="$ServiceStatusString"$(servicestatus "$i")";"
 	done
 fi
+# Check Software RAID
+RAID=""
+if [ "$CheckSoftRAID" -gt 0 ]
+then
+	for i in $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $1 }')
+	do
+		mdadm=$(mdadm -D $i)
+		if [ ! -z "$mdadm" ]
+		then
+			mnt=$(df -PB1 | grep $i | awk '{ print $(NF) }')
+			RAID="$RAID|$mnt;$i;$mdadm;"
+		fi
+	done
+fi
+RAID=$(echo -ne "$RAID" | base64)
 
 # Bundle collected data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID"
 # Post string
 POST="v=$VERSION&s=$SID&d=$DATA"
 
