@@ -4,6 +4,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 Version 1.5.3 ChangeLog:
 - Software RAID Monitor
+- Drive Health Monitor
 
 Version 1.5.2 ChangeLog:
 - System Uptime
