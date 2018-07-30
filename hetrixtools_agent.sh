@@ -51,9 +51,17 @@ CheckServices=""
 
 # Check Software RAID Health
 # * checks the status/health of any software RAID (mdadm) setup on the server
-# * agent must be run as 'root' or privileged user to be able to fetch mdadm status
+# * agent must be run as 'root' or privileged user to fetch the RAID status
 # * 0 - OFF (default) | 1 - ON
 CheckSoftRAID=0
+
+# Check Drive Health
+# * checks the health of any found drives on the system
+# * requirements: 'S.M.A.R.T.' for HDD/SSD or 'nvme-cli' for NVMe
+# * (these do not get installed by our agent, you must install them separately)
+# * agent must be run as 'root' or privileged user to use this function
+# * 0 - OFF (default) | 1 - ON
+CheckDriveHealth=0
 
 ################################################
 ## CAUTION: Do not edit any of the code below ##
@@ -229,9 +237,38 @@ then
 	done
 fi
 RAID=$(echo -ne "$RAID" | base64)
+#Check Drive Health
+DH=""
+if [ "$CheckDriveHealth" -gt 0 ]
+then
+	if [ -x "$(command -v smartctl)" ] #Using S.M.A.R.T. (for regular HDD/SSD)
+	then
+		for i in $(lsblk -l | grep 'disk' | awk '{ print $1 }')
+		do
+			DHealth=$(smartctl -A /dev/$i)
+			if grep -q 'Attribute' <<< $DHealth
+			then
+				DHealth=$(smartctl -H /dev/$i)"\n$DHealth"
+				DH="$DH|1\n$i\n$DHealth\n"
+			fi
+		done
+	fi
+	if [ -x "$(command -v nvme)" ] #Using nvme-cli (for NVMe)
+	then
+		for i in $(lsblk -l | grep 'disk' | awk '{ print $1 }')
+		do
+			DHealth=$(nvme smart-log /dev/$i)
+			if grep -q 'NVME' <<< $DHealth
+			then
+				DH="$DH|2\n$i\n$DHealth\n"
+			fi
+		done
+	fi
+fi
+DH=$(echo -ne "$DH" | base64)
 
 # Bundle collected data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH"
 # Post string
 POST="v=$VERSION&s=$SID&d=$DATA"
 
