@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.5.2
+#	version 1.5.3
 #	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -85,6 +85,15 @@ if [ "$3" != "0" ]
 then
 	echo "Services found, inserting them into the agent config..."
 	sed -i "s/CheckServices=\"\"/CheckServices=\"$3\"/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
+
+# Check if software RAID should be monitored
+echo "Checking if software RAID should be monitored..."
+if [ "$4" != "0" ]
+then
+	echo "Enabling software RAID monitoring in the agent config..."
+	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" /etc/hetrixtools/hetrixtools_agent.sh
 fi
 echo "... done."
 
