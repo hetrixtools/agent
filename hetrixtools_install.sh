@@ -97,6 +97,15 @@ then
 fi
 echo "... done."
 
+# Check if Drive Health should be monitored
+echo "Checking if Drive Health should be monitored..."
+if [ "$5" != "0" ]
+then
+	echo "Enabling Drive Health monitoring in the agent config..."
+	sed -i "s/CheckDriveHealth=0/CheckDriveHealth=1/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
+
 # Finding the public network interface name, based on your public IP address
 echo "Finding your public network interface name..."
 NetworkInterface=$(ip route get 8.8.8.8 | grep dev | awk -F 'dev' '{ print $2 }' | awk '{ print $1 }')
