@@ -69,20 +69,25 @@ CheckDriveHealth=0
 
 # Check service status function
 function servicestatus() {
-	# Check if we have systemctl
-	if command -v "systemctl" > /dev/null 2>&1
+	# Check first via ps
+	if (( $(ps -ef | grep -v grep | grep $1 | wc -l) > 0 ))
 	then
-		if $(systemctl is-active --quiet $1)
-		then
-			echo "$(echo -ne "$1" | base64),1"
-		else
-			echo "$(echo -ne "$1" | base64),0"
-		fi
+		# Up
+		echo "$(echo -ne "$1" | base64),1"
 	else
-		if (( $(ps -ef | grep -v grep | grep $1 | wc -l) > 0 ))
+		# Down, try with systemctl (if available)
+		if command -v "systemctl" > /dev/null 2>&1
 		then
-			echo "$(echo -ne "$1" | base64),1"
+			if $(systemctl is-active --quiet $1)
+			then
+				# Up
+				echo "$(echo -ne "$1" | base64),1"
+			else
+				# Down
+				echo "$(echo -ne "$1" | base64),0"
+			fi
 		else
+			# No systemctl, declare it down
 			echo "$(echo -ne "$1" | base64),0"
 		fi
 	fi
