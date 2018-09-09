@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.3
+#	version 1.5.4
 #	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -27,7 +27,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Agent Version (do not change)
-VERSION="1.5.3"
+VERSION="1.5.4"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -67,6 +67,7 @@ CheckDriveHealth=0
 ## CAUTION: Do not edit any of the code below ##
 ################################################
 
+# Function used for service status check
 function servicestatus() {
 	# Check first via ps
 	if (( $(ps -ef | grep -v grep | grep $1 | wc -l) > 0 ))
@@ -90,6 +91,14 @@ function servicestatus() {
 			echo "$(echo -ne "$1" | base64),0"
 		fi
 	fi
+}
+
+# Function used to prepare base64 str for url encoding
+function base64prep() {
+	str=$1
+	str="${str//+/%2B}"
+	str="${str//\//%2F}"
+	echo $str
 }
 
 # Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
@@ -241,7 +250,7 @@ then
 	done
 fi
 RAID=$(echo -ne "$RAID" | base64)
-#Check Drive Health
+# Check Drive Health
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
 then
@@ -270,14 +279,30 @@ then
 	fi
 fi
 DH=$(echo -ne "$DH" | base64)
+# Running Processes
+# Get initial 'running processes' snapshot, saved from last run
+RPS1=$(cat /etc/hetrixtools/running_proc.txt)
+# Get the current 'running processes' snapshot
+RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etimes,comm,cmd --no-headers)
+RPS2=$(echo -ne "$RPS2" | base64)
+RPS2=$(base64prep "$RPS2")
+# Save the current snapshot for next run
+echo $RPS2 > /etc/hetrixtools/running_proc.txt
 
 # Bundle collected data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
 # Post string
 POST="v=$VERSION&s=$SID&d=$DATA"
 
-# Logging entire post string (for debugging)
+# Save entire post string to file
 echo $POST > /etc/hetrixtools/hetrixtools_agent.log
 
 # Post collected data
-wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
+if [ -x "$(command -v curl)" ]
+then
+	# If CURL is available, use it
+	curl --connect-timeout 30 --data "@/etc/hetrixtools/hetrixtools_agent.log" https://sm.hetrixtools.com/ &> /dev/null
+else
+	# Else fallback on WGET
+	wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
+fi
