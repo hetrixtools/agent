@@ -25,6 +25,8 @@
 
 # Set PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Script Path
+ScriptPath=$( dirname "${BASH_SOURCE[0]}" )
 
 # Agent Version (do not change)
 VERSION="1.5.4"
@@ -122,7 +124,7 @@ if [ -z "$M" ]
 then
 	M=0
 	# Clear the hetrixtools_cron.log every hour
-	rm -f /etc/hetrixtools/hetrixtools_cron.log
+	rm -f $ScriptPath/hetrixtools_cron.log
 fi
 
 # Get the initial network usage
@@ -279,30 +281,36 @@ then
 	fi
 fi
 DH=$(echo -ne "$DH" | base64)
-# Running Processes
-# Get initial 'running processes' snapshot, saved from last run
-RPS1=$(cat /etc/hetrixtools/running_proc.txt)
-# Get the current 'running processes' snapshot
-RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etimes,comm,cmd --no-headers)
-RPS2=$(echo -ne "$RPS2" | base64)
-RPS2=$(base64prep "$RPS2")
-# Save the current snapshot for next run
-echo $RPS2 > /etc/hetrixtools/running_proc.txt
 
-# Bundle collected data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
-# Post string
-POST="v=$VERSION&s=$SID&d=$DATA"
 
-# Save entire post string to file
-echo $POST > /etc/hetrixtools/hetrixtools_agent.log
-
-# Post collected data
+# Prepare Data
 if [ -x "$(command -v curl)" ]
 then
-	# If CURL is available, use it
-	curl --connect-timeout 30 --data "@/etc/hetrixtools/hetrixtools_agent.log" https://sm.hetrixtools.com/ &> /dev/null
+	# If CURL is available include 'running processes'
+	# Get initial 'running processes' snapshot, saved from last run
+	RPS1=$(cat $ScriptPath/running_proc.txt)
+	# Get the current 'running processes' snapshot
+	RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etimes,comm,cmd --no-headers)
+	RPS2=$(echo -ne "$RPS2" | base64)
+	RPS2=$(base64prep "$RPS2")
+	# Save the current snapshot for next run
+	echo $RPS2 > $ScriptPath/running_proc.txt
+	# Bundle collected data
+	DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
+	# Post string
+	POST="v=$VERSION&s=$SID&d=$DATA"
+	# Save entire post string to file
+	echo $POST > $ScriptPath/hetrixtools_agent.log
+	# Post collected data via CURL
+	curl --connect-timeout 30 --data "@$ScriptPath/hetrixtools_agent.log" https://sm.hetrixtools.com/ &> /dev/null
 else
-	# Else fallback on WGET
+	# If CURL is not available, skip 'running processes' because data is too big for command line WGET
+	# Bundle collected data
+	DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH||"
+	# Post string
+	POST="v=$VERSION&s=$SID&d=$DATA"
+	# Save entire post string to file
+	echo $POST > $ScriptPath/hetrixtools_agent.log
+	# Post collected data via WGET
 	wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
 fi
