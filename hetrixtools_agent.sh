@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.4
+#	version 1.5.3
 #	Copyright 2018 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -29,7 +29,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$( dirname "${BASH_SOURCE[0]}" )
 
 # Agent Version (do not change)
-VERSION="1.5.4"
+VERSION="1.5.3"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -69,7 +69,6 @@ CheckDriveHealth=0
 ## CAUTION: Do not edit any of the code below ##
 ################################################
 
-# Function used for service status check
 function servicestatus() {
 	# Check first via ps
 	if (( $(ps -ef | grep -v grep | grep $1 | wc -l) > 0 ))
@@ -93,14 +92,6 @@ function servicestatus() {
 			echo "$(echo -ne "$1" | base64),0"
 		fi
 	fi
-}
-
-# Function used to prepare base64 str for url encoding
-function base64prep() {
-	str=$1
-	str="${str//+/%2B}"
-	str="${str//\//%2F}"
-	echo $str
 }
 
 # Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
@@ -252,7 +243,7 @@ then
 	done
 fi
 RAID=$(echo -ne "$RAID" | base64)
-# Check Drive Health
+#Check Drive Health
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
 then

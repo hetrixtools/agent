@@ -2,11 +2,17 @@
 
 Documentation available here: https://docs.hetrixtools.com/category/server-monitor/
 
-Version 1.5.3 ChangeLog:
+
+-= ChangeLog =-
+
+Version 1.5.4:
+- View running processes
+
+Version 1.5.3:
 - Software RAID Monitor
 - Drive Health Monitor
 
-Version 1.5.2 ChangeLog:
+Version 1.5.2:
 - System Uptime
 - IO Wait
 - Swap Usage
