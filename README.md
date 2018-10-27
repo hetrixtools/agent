@@ -5,7 +5,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
-Version 1.5.3:
+Version 1.5.4:
 - View running processes
 
 Version 1.5.3:
