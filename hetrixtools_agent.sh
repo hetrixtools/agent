@@ -93,6 +93,14 @@ function servicestatus() {
 	fi
 }
 
+# Function used to prepare base64 str for url encoding
+function base64prep() {
+	str=$1
+	str="${str//+/%2B}"
+	str="${str//\//%2F}"
+	echo $str
+}
+
 # Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
 # so when a new cycle starts there shouldn't be any lingering agents around, but just in case, so they won't stack)
 HTProcesses=$(ps -eo user=|sort|uniq -c | grep hetrixtools | awk -F " " '{print $1}')
