@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.3
-#	Copyright 2018 @  HetrixTools
+#	version 1.5.4
+#	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -25,9 +25,10 @@
 
 # Set PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.5.3"
+VERSION="1.5.4"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -92,6 +93,14 @@ function servicestatus() {
 	fi
 }
 
+# Function used to prepare base64 str for url encoding
+function base64prep() {
+	str=$1
+	str="${str//+/%2B}"
+	str="${str//\//%2F}"
+	echo $str
+}
+
 # Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
 # so when a new cycle starts there shouldn't be any lingering agents around, but just in case, so they won't stack)
 HTProcesses=$(ps -eo user=|sort|uniq -c | grep hetrixtools | awk -F " " '{print $1}')
@@ -113,7 +122,7 @@ if [ -z "$M" ]
 then
 	M=0
 	# Clear the hetrixtools_cron.log every hour
-	rm -f /etc/hetrixtools/hetrixtools_cron.log
+	rm -f $ScriptPath/hetrixtools_cron.log
 fi
 
 # Get the initial network usage
@@ -270,14 +279,21 @@ then
 	fi
 fi
 DH=$(echo -ne "$DH" | base64)
+# Running Processes
+# Get initial 'running processes' snapshot, saved from last run
+RPS1=$(cat $ScriptPath/running_proc.txt)
+# Get the current 'running processes' snapshot
+RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etimes,comm,cmd --no-headers)
+RPS2=$(echo -ne "$RPS2" | base64)
+RPS2=$(base64prep "$RPS2")
+# Save the current snapshot for next run
+echo $RPS2 > $ScriptPath/running_proc.txt
 
-# Bundle collected data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH"
-# Post string
+# Prepare data
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
 POST="v=$VERSION&s=$SID&d=$DATA"
+# Save data to file
+echo $POST > $ScriptPath/hetrixtools_agent.log
 
-# Logging entire post string (for debugging)
-echo $POST > /etc/hetrixtools/hetrixtools_agent.log
-
-# Post collected data
-wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
+# Post data
+wget -t 1 -T 30 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
