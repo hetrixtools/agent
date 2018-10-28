@@ -283,7 +283,7 @@ DH=$(echo -ne "$DH" | base64)
 # Get initial 'running processes' snapshot, saved from last run
 RPS1=$(cat $ScriptPath/running_proc.txt)
 # Get the current 'running processes' snapshot
-RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etimes,comm,cmd --no-headers)
+RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etime,comm,cmd --no-headers)
 RPS2=$(echo -ne "$RPS2" | base64)
 RPS2=$(base64prep "$RPS2")
 # Save the current snapshot for next run
