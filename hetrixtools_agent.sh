@@ -64,6 +64,11 @@ CheckSoftRAID=0
 # * 0 - OFF (default) | 1 - ON
 CheckDriveHealth=0
 
+# View Running Processes
+# * whether or not to record the server's running processes and display them in your HetrixTools dashboard
+# * 0 - OFF (default) | 1 - ON
+RunningProcesses=0
+
 ################################################
 ## CAUTION: Do not edit any of the code below ##
 ################################################
@@ -250,7 +255,7 @@ then
 	done
 fi
 RAID=$(echo -ne "$RAID" | base64)
-#Check Drive Health
+# Check Drive Health
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
 then
@@ -280,14 +285,19 @@ then
 fi
 DH=$(echo -ne "$DH" | base64)
 # Running Processes
-# Get initial 'running processes' snapshot, saved from last run
-RPS1=$(cat $ScriptPath/running_proc.txt)
-# Get the current 'running processes' snapshot
-RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etime,comm,cmd --no-headers)
-RPS2=$(echo -ne "$RPS2" | base64)
-RPS2=$(base64prep "$RPS2")
-# Save the current snapshot for next run
-echo $RPS2 > $ScriptPath/running_proc.txt
+RPS1=""
+RPS2=""
+if [ "$RunningProcesses" -gt 0 ]
+then
+	# Get initial 'running processes' snapshot, saved from last run
+	RPS1=$(cat $ScriptPath/running_proc.txt)
+	# Get the current 'running processes' snapshot
+	RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etime,comm,cmd --no-headers)
+	RPS2=$(echo -ne "$RPS2" | base64)
+	RPS2=$(base64prep "$RPS2")
+	# Save the current snapshot for next run
+	echo $RPS2 > $ScriptPath/running_proc.txt
+fi
 
 # Prepare data
 DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
