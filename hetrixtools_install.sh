@@ -81,7 +81,7 @@ echo "... done."
 
 # Check if any services are to be monitored
 echo "Checking if any services should be monitored..."
-if [ "$3" != "0" ]
+if [ "$3" -eq "1" ]
 then
 	echo "Services found, inserting them into the agent config..."
 	sed -i "s/CheckServices=\"\"/CheckServices=\"$3\"/" /etc/hetrixtools/hetrixtools_agent.sh
@@ -90,7 +90,7 @@ echo "... done."
 
 # Check if software RAID should be monitored
 echo "Checking if software RAID should be monitored..."
-if [ "$4" != "0" ]
+if [ "$4" -eq "1" ]
 then
 	echo "Enabling software RAID monitoring in the agent config..."
 	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" /etc/hetrixtools/hetrixtools_agent.sh
@@ -99,10 +99,19 @@ echo "... done."
 
 # Check if Drive Health should be monitored
 echo "Checking if Drive Health should be monitored..."
-if [ "$5" != "0" ]
+if [ "$5" -eq "1" ]
 then
 	echo "Enabling Drive Health monitoring in the agent config..."
 	sed -i "s/CheckDriveHealth=0/CheckDriveHealth=1/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
+
+# Check if 'View running processes' should be enabled
+echo "Checking if 'View running processes' should be enabled..."
+if [ "$6" -eq "1" ]
+then
+	echo "Enabling 'View running processes' in the agent config..."
+	sed -i "s/RunningProcesses=0/RunningProcesses=1/" /etc/hetrixtools/hetrixtools_agent.sh
 fi
 echo "... done."
 
