@@ -306,4 +306,4 @@ POST="v=$VERSION&s=$SID&d=$DATA"
 echo $POST > $ScriptPath/hetrixtools_agent.log
 
 # Post data
-wget -t 1 -T 30 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" --no-check-certificate https://sm.hetrixtools.com/ &> /dev/null
+wget -t 1 -T 30 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" --no-check-certificate https://sm.hetrixtools.net/ &> /dev/null
