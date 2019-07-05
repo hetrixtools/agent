@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.5.4
+#	version 1.5.5
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -113,22 +113,6 @@ then
 	echo "Enabling 'View running processes' in the agent config..."
 	sed -i "s/RunningProcesses=0/RunningProcesses=1/" /etc/hetrixtools/hetrixtools_agent.sh
 fi
-echo "... done."
-
-# Finding the public network interface name, based on your public IP address
-echo "Finding your public network interface name..."
-NetworkInterface=$(ip route get 8.8.8.8 | grep dev | awk -F 'dev' '{ print $2 }' | awk '{ print $1 }')
-# Fallback on eth0 if couldn't find interface name
-if [ -z "$NetworkInterface" ]
-then
-	NetworkInterface="eth0"
-fi
-echo "... done."
-
-# Inserting the network interface name into the agent configuration
-echo "Inserting network interface name into agent config..."
-sed -i "s/ETHPLACEHOLDER/$NetworkInterface/" /etc/hetrixtools/hetrixtools_agent.sh
-sed -i 's/\r$//' /etc/hetrixtools/hetrixtools_agent.sh
 echo "... done."
 
 # Killing any running hetrixtools agents
