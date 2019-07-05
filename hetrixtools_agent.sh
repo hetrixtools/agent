@@ -223,7 +223,7 @@ then
 else
 	OS="$(uname -s) $(uname -r)"
 fi
-OS=$(echo -ne "$OS" | base64)
+OS=$(echo -ne "$OS|$(uname -r)" | base64)
 # Get the server uptime
 Uptime=$(cat /proc/uptime | awk '{ print $1 }')
 # Get CPU model
