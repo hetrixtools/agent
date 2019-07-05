@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 1.5.5:
+- Support for multiple network interfaces
+
 Version 1.5.4:
 - View running processes
 
