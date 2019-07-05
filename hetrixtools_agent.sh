@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.4
+#	version 1.5.5
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -28,7 +28,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.5.4"
+VERSION="1.5.5"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -40,10 +40,11 @@ CollectEveryXSeconds=3
 # Runtime, in seconds (do not modify this, unless instructed to do so)
 Runtime=60
 
-# Network Interface
-# * our agent will try to find your public network interface during installation
-# * however, you can manually specify a network interface name below, in order to gather usage statistics from that particular one instead
-NetworkInterface="ETHPLACEHOLDER"
+# Network Interfaces
+# * if you leave this setting empty our agent will detect and monitor all of your active network interfaces
+# * if you wish to monitor just one interface, fill its name down below (ie: "eth1")
+# * if you wish to monitor just some specific interfaces, fill their names below separated by comma (ie: "eth0,eth1,eth2")
+NetworkInterfaces=""
 
 # Check Services
 # * separate service names by comma (,) with a maximum of 10 services to be monitored (ie: "ssh,mysql,apache2,nginx")
@@ -130,11 +131,28 @@ then
 	rm -f $ScriptPath/hetrixtools_cron.log
 fi
 
+# Network interfaces
+if [ ! -z "$NetworkInterfaces" ]
+then
+	# Use the network interfaces specified in Settings
+	IFS=',' read -r -a NetworkInterfacesArray <<< "$NetworkInterfaces"
+else
+	# Automatically detect the network interfaces
+	NetworkInterfacesArray=($(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}'))
+fi
 # Get the initial network usage
-T=$(cat /proc/net/dev | grep "$NetworkInterface:" | awk '{print $2"|"$10}')
+T=$(cat /proc/net/dev)
 START=$(date +%s)
-aRX=$(echo $T | awk -F "|" '{print $1}')
-aTX=$(echo $T | awk -F "|" '{print $2}')
+declare -A aRX
+declare -A aTX
+declare -A tRX
+declare -A tTX
+# Loop through network interfaces
+for NIC in "${NetworkInterfacesArray[@]}"
+do
+	aRX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $2}')
+	aTX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $10}')
+done
 
 # Collect data loop
 for X in $(seq $RunTimes)
@@ -154,24 +172,28 @@ do
 	RAM=$(echo | awk "{ print 100 - $RAM }")
 	tRAM=$(echo | awk "{ print $tRAM + $RAM }")
 	# Get Network Usage
-	T=$(cat /proc/net/dev | grep "$NetworkInterface:" | awk '{print $2"|"$10}')
+	T=$(cat /proc/net/dev)
 	END=$(date +%s)
 	TIMEDIFF=$(echo | awk "{ print $END - $START }")
 	START=$(date +%s)
-	# Received Traffic
-	RX=$(echo | awk "{ print $(echo $T | awk -F "|" '{print $1}') - $aRX }")
-	RX=$(echo | awk "{ print $RX / $TIMEDIFF }")
-	RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
-	aRX=$(echo $T | awk -F "|" '{print $1}')
-	tRX=$(echo | awk "{ print $tRX + $RX }")
-	tRX=$(echo "$tRX" | awk {'printf "%18.0f",$1'} | xargs)
-	# Transferred Traffic
-	TX=$(echo | awk "{ print $(echo $T | awk -F "|" '{print $2}') - $aTX }")
-	TX=$(echo | awk "{ print $TX / $TIMEDIFF }")
-	TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
-	aTX=$(echo $T | awk -F "|" '{print $2}')
-	tTX=$(echo | awk "{ print $tTX + $TX }")
-	tTX=$(echo "$tTX" | awk {'printf "%18.0f",$1'} | xargs)
+		# Loop through network interfaces
+	for NIC in "${NetworkInterfacesArray[@]}"
+	do
+		# Received Traffic
+		RX=$(echo | awk "{ print $(echo "$T" | grep "$NIC" | awk '{print $2}') - ${aRX[$NIC]} }")
+		RX=$(echo | awk "{ print $RX / $TIMEDIFF }")
+		RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
+		aRX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $2}')
+		tRX[$NIC]=$(echo | awk "{ print ${tRX[$NIC]} + $RX }")
+		tRX[$NIC]=$(echo "${tRX[$NIC]}" | awk {'printf "%18.0f",$1'} | xargs)
+		# Transferred Traffic
+		TX=$(echo | awk "{ print $(echo "$T" | grep "$NIC" | awk '{print $10}') - ${aTX[$NIC]} }")
+		TX=$(echo | awk "{ print $TX / $TIMEDIFF }")
+		TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
+		aTX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $10}')
+		tTX[$NIC]=$(echo | awk "{ print ${tTX[$NIC]} + $TX }")
+		tTX[$NIC]=$(echo "${tTX[$NIC]}" | awk {'printf "%18.0f",$1'} | xargs)
+	done
 	# Check if minute changed, so we can end the loop
 	MM=$(echo `date +%M` | sed 's/^0*//')
 	if [ -z "$MM" ]
@@ -226,12 +248,22 @@ SwapFree=$(cat /proc/meminfo | grep ^SwapFree: | awk '{print $2}')
 Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
 # Get all disks usage
 DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | base64)
-# Calculate Network Usage (bytes)
-RX=$(echo | awk "{ print $tRX / $X }")
-RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
-TX=$(echo | awk "{ print $tTX / $X }")
-TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
+# Calculate Total Network Usage (bytes)
+RX=0
+TX=0
+NICS=""
+for NIC in "${NetworkInterfacesArray[@]}"
+do
+	# Calculate individual NIC usage
+	RX=$(echo | awk "{ print ${tRX[$NIC]} / $X }")
+	RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
+	TX=$(echo | awk "{ print ${tTX[$NIC]} / $X }")
+	TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
+	NICS=$NICS"|"$NIC";"$RX";"$TX";"
+done
+NICS=$(echo -ne "$NICS" | base64)
 # Check Services (if any are set to be checked)
+ServiceStatusString=""
 if [ ! -z "$CheckServices" ]
 then
 	IFS=',' read -r -a CheckServicesArray <<< "$CheckServices"
@@ -300,7 +332,7 @@ then
 fi
 
 # Prepare data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$RX|$TX|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
 POST="v=$VERSION&s=$SID&d=$DATA"
 # Save data to file
 echo $POST > $ScriptPath/hetrixtools_agent.log
