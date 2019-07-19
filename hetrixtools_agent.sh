@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.5
+#	version 1.5.6
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -28,7 +28,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.5.5"
+VERSION="1.5.6"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -206,7 +206,13 @@ do
 	fi
 done
 
-# Get Operating System
+# Check if system requires reboot
+RequiresReboot=0
+if [ -f  /var/run/reboot-required ]
+then
+	RequiresReboot=1
+fi
+# Get Operating System and Kernel
 # Check via lsb_release if possible
 if command -v "lsb_release" > /dev/null 2>&1
 then
@@ -219,11 +225,16 @@ then
 elif [ -f /etc/redhat-release ]
 then
 	OS=`cat /etc/redhat-release`
+	# Check if system requires reboot (Only supported in CentOS/RHEL 7 and later, with yum-utils installed)
+	if [ ! -z "$(needs-restarting -r | grep 'Reboot is required')" ]
+	then
+		RequiresReboot=1
+	fi
 # If all else fails, get Kernel name
 else
 	OS="$(uname -s) $(uname -r)"
 fi
-OS=$(echo -ne "$OS|$(uname -r)" | base64)
+OS=$(echo -ne "$OS|$(uname -r)|$RequiresReboot" | base64)
 # Get the server uptime
 Uptime=$(cat /proc/uptime | awk '{ print $1 }')
 # Get CPU model
@@ -310,6 +321,10 @@ then
 			DHealth=$(nvme smart-log /dev/$i)
 			if grep -q 'NVME' <<< $DHealth
 			then
+				if [ -x "$(command -v smartctl)" ]
+				then
+					DHealth=$(smartctl -H /dev/${i%??})"\n$DHealth"
+				fi
 				DH="$DH|2\n$i\n$DHealth\n"
 			fi
 		done
