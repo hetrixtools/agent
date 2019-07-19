@@ -1,9 +1,13 @@
-# HetrixTools Server Monitoring Agent
+# HetrixTools Linux Server Monitoring Agent
 
 Documentation available here: https://docs.hetrixtools.com/category/server-monitor/
 
 
 -= ChangeLog =-
+
+Version 1.5.6:
+- Added user warning if the server requires reboot
+- Added SMART self-test for NVMe disks
 
 Version 1.5.5:
 - Support for multiple network interfaces
