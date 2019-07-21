@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	version 1.5.6
+#	version 1.5.7
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -24,6 +24,14 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Old Agent Path
 AGENT="/etc/hetrixtools/hetrixtools_agent.sh"
+
+# Check if user specified version to update to
+if [ -z "$1" ]
+then
+	VERS="master"
+else
+	VERS=$1
+fi
 
 # Check if install script is run by root
 echo "Checking root privileges..."
@@ -68,7 +76,7 @@ echo "... done."
 
 # Fetching new agent
 echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO $AGENT --no-check-certificate https://raw.github.com/hetrixtools/agent/master/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO $AGENT --no-check-certificate https://raw.github.com/hetrixtools/agent/$VERS/hetrixtools_agent.sh
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
