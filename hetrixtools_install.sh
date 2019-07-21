@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.5.6
+#	version 1.5.7
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
