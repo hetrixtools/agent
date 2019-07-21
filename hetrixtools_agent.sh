@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.6
+#	version 1.5.7
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -28,7 +28,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.5.6"
+VERSION="1.5.7"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -311,6 +311,22 @@ then
 			then
 				DHealth=$(smartctl -H /dev/$i)"\n$DHealth"
 				DH="$DH|1\n$i\n$DHealth\n"
+			else # If initial read has failed, see if drives are behind hardware raid
+				if grep -q 'MegaRaid' <<< $DHealth
+				then
+					MegaRaidN=0
+					MegaRaid=($(smartctl --scan | grep megaraid | awk '{ print $(3) }'))
+					for MegaRaidID in "${MegaRaid[@]}"
+					do
+						DHealth=$(smartctl -A -d $MegaRaidID /dev/$i)
+						if grep -q 'Attribute' <<< $DHealth
+						then
+							MegaRaidN=$((MegaRaidN + 1))
+							DHealth=$(smartctl -H -d $MegaRaidID /dev/$i)"\n$DHealth"
+							DH="$DH|1\n$i$MegaRaidN\n$DHealth\n"
+						fi
+					done
+				fi
 			fi
 		done
 	fi
