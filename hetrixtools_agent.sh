@@ -323,7 +323,7 @@ then
 						then
 							MegaRaidN=$((MegaRaidN + 1))
 							DHealth=$(smartctl -H -d $MegaRaidID /dev/$i)"\n$DHealth"
-							DH="$DH|1\n$i$MegaRaidN\n$DHealth\n"
+							DH="$DH|1\n$i[$MegaRaidN]\n$DHealth\n"
 						fi
 					done
 				fi
