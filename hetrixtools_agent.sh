@@ -312,10 +312,10 @@ then
 				DHealth=$(smartctl -H /dev/$i)"\n$DHealth"
 				DH="$DH|1\n$i\n$DHealth\n"
 			else # If initial read has failed, see if drives are behind hardware raid
-				if grep -q 'MegaRaid' <<< $DHealth
+				MegaRaid=($(smartctl --scan | grep megaraid | awk '{ print $(3) }'))
+				if [ ${#MegaRaid[@]} -gt 0 ]
 				then
 					MegaRaidN=0
-					MegaRaid=($(smartctl --scan | grep megaraid | awk '{ print $(3) }'))
 					for MegaRaidID in "${MegaRaid[@]}"
 					do
 						DHealth=$(smartctl -A -d $MegaRaidID /dev/$i)
