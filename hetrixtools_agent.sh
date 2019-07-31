@@ -138,7 +138,7 @@ then
 	IFS=',' read -r -a NetworkInterfacesArray <<< "$NetworkInterfaces"
 else
 	# Automatically detect the network interfaces
-	NetworkInterfacesArray=($(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}'))
+	NetworkInterfacesArray=($(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}'))
 fi
 # Get the initial network usage
 T=$(cat /proc/net/dev)
@@ -150,8 +150,8 @@ declare -A tTX
 # Loop through network interfaces
 for NIC in "${NetworkInterfacesArray[@]}"
 do
-	aRX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $2}')
-	aTX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $10}')
+	aRX[$NIC]=$(echo "$T" | grep -w "$NIC" | awk '{print $2}')
+	aTX[$NIC]=$(echo "$T" | grep -w "$NIC" | awk '{print $10}')
 done
 
 # Collect data loop
@@ -180,17 +180,17 @@ do
 	for NIC in "${NetworkInterfacesArray[@]}"
 	do
 		# Received Traffic
-		RX=$(echo | awk "{ print $(echo "$T" | grep "$NIC" | awk '{print $2}') - ${aRX[$NIC]} }")
+		RX=$(echo | awk "{ print $(echo "$T" | grep -w "$NIC" | awk '{print $2}') - ${aRX[$NIC]} }")
 		RX=$(echo | awk "{ print $RX / $TIMEDIFF }")
 		RX=$(echo "$RX" | awk {'printf "%18.0f",$1'} | xargs)
-		aRX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $2}')
+		aRX[$NIC]=$(echo "$T" | grep -w "$NIC" | awk '{print $2}')
 		tRX[$NIC]=$(echo | awk "{ print ${tRX[$NIC]} + $RX }")
 		tRX[$NIC]=$(echo "${tRX[$NIC]}" | awk {'printf "%18.0f",$1'} | xargs)
 		# Transferred Traffic
-		TX=$(echo | awk "{ print $(echo "$T" | grep "$NIC" | awk '{print $10}') - ${aTX[$NIC]} }")
+		TX=$(echo | awk "{ print $(echo "$T" | grep -w "$NIC" | awk '{print $10}') - ${aTX[$NIC]} }")
 		TX=$(echo | awk "{ print $TX / $TIMEDIFF }")
 		TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
-		aTX[$NIC]=$(echo "$T" | grep "$NIC" | awk '{print $10}')
+		aTX[$NIC]=$(echo "$T" | grep -w "$NIC" | awk '{print $10}')
 		tTX[$NIC]=$(echo | awk "{ print ${tTX[$NIC]} + $TX }")
 		tTX[$NIC]=$(echo "${tTX[$NIC]}" | awk {'printf "%18.0f",$1'} | xargs)
 	done
