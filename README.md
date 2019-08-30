@@ -5,6 +5,12 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 1.5.8:
+- Improved compression to reduce data payload size
+
+Version 1.5.7:
+- Drive Health can now query the Drive stats (via S.M.A.R.T.) even when drives are behind hardware RAID
+
 Version 1.5.6:
 - Added user warning if the server requires reboot
 - Added SMART self-test for NVMe disks
