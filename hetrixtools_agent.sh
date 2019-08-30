@@ -238,10 +238,11 @@ OS=$(echo -ne "$OS|$(uname -r)|$RequiresReboot" | base64)
 # Get the server uptime
 Uptime=$(cat /proc/uptime | awk '{ print $1 }')
 # Get CPU model
-CPUModel=$(cat /proc/cpuinfo | grep 'model name' | uniq | awk -F": " '{ print $2 }')
+CPUModel=$(cat /proc/cpuinfo | grep -m1 'model name' | awk -F": " '{ print $2 }')
 CPUModel=$(echo -ne "$CPUModel" | base64)
 # Get CPU speed (MHz)
-CPUSpeed=$(cat /proc/cpuinfo | grep 'cpu MHz' | uniq | awk -F": " '{ print $2 }')
+CPUSpeed=$(cat /proc/cpuinfo | grep -m1 'cpu MHz' | awk -F": " '{ print $2 }')
+CPUSpeed=$(echo -ne "$CPUSpeed" | base64)
 # Get number of cores
 CPUCores=$(cat /proc/cpuinfo | grep processor | wc -l)
 # Calculate average CPU Usage
@@ -297,7 +298,7 @@ then
 		fi
 	done
 fi
-RAID=$(echo -ne "$RAID" | base64)
+RAID=$(echo -ne "$RAID" | gzip -cf | base64)
 # Check Drive Health
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
@@ -346,7 +347,7 @@ then
 		done
 	fi
 fi
-DH=$(echo -ne "$DH" | base64)
+DH=$(echo -ne "$DH" | gzip -cf | base64)
 # Running Processes
 RPS1=""
 RPS2=""
@@ -356,7 +357,7 @@ then
 	RPS1=$(cat $ScriptPath/running_proc.txt)
 	# Get the current 'running processes' snapshot
 	RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etime,comm,cmd --no-headers)
-	RPS2=$(echo -ne "$RPS2" | base64)
+	RPS2=$(echo -ne "$RPS2" | gzip -cf | base64)
 	RPS2=$(base64prep "$RPS2")
 	# Save the current snapshot for next run
 	echo $RPS2 > $ScriptPath/running_proc.txt
