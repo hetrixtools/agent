@@ -259,7 +259,8 @@ SwapSize=$(cat /proc/meminfo | grep ^SwapTotal: | awk '{print $2}')
 SwapFree=$(cat /proc/meminfo | grep ^SwapFree: | awk '{print $2}')
 Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
 # Get all disks usage
-DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | base64)
+DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | gzip -cf | base64)
+DISKs=$(base64prep "$DISKs")
 # Calculate Total Network Usage (bytes)
 RX=0
 TX=0
@@ -273,7 +274,8 @@ do
 	TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
 	NICS=$NICS"|"$NIC";"$RX";"$TX";"
 done
-NICS=$(echo -ne "$NICS" | base64)
+NICS=$(echo -ne "$NICS" | gzip -cf | base64)
+NICS=$(base64prep "$NICS")
 # Check Services (if any are set to be checked)
 ServiceStatusString=""
 if [ ! -z "$CheckServices" ]
@@ -299,6 +301,7 @@ then
 	done
 fi
 RAID=$(echo -ne "$RAID" | gzip -cf | base64)
+RAID=$(base64prep "$RAID")
 # Check Drive Health
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
@@ -348,6 +351,7 @@ then
 	fi
 fi
 DH=$(echo -ne "$DH" | gzip -cf | base64)
+DH=$(base64prep "$DH")
 # Running Processes
 RPS1=""
 RPS2=""
