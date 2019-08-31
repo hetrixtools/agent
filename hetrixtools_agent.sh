@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.6
+#	version 1.5.8
 #	Copyright 2015 - 2019 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -28,7 +28,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.5.6"
+VERSION="1.5.8"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -238,10 +238,11 @@ OS=$(echo -ne "$OS|$(uname -r)|$RequiresReboot" | base64)
 # Get the server uptime
 Uptime=$(cat /proc/uptime | awk '{ print $1 }')
 # Get CPU model
-CPUModel=$(cat /proc/cpuinfo | grep 'model name' | uniq | awk -F": " '{ print $2 }')
+CPUModel=$(cat /proc/cpuinfo | grep -m1 'model name' | awk -F": " '{ print $2 }')
 CPUModel=$(echo -ne "$CPUModel" | base64)
 # Get CPU speed (MHz)
-CPUSpeed=$(cat /proc/cpuinfo | grep 'cpu MHz' | uniq | awk -F": " '{ print $2 }')
+CPUSpeed=$(cat /proc/cpuinfo | grep -m1 'cpu MHz' | awk -F": " '{ print $2 }')
+CPUSpeed=$(echo -ne "$CPUSpeed" | base64)
 # Get number of cores
 CPUCores=$(cat /proc/cpuinfo | grep processor | wc -l)
 # Calculate average CPU Usage
@@ -258,7 +259,8 @@ SwapSize=$(cat /proc/meminfo | grep ^SwapTotal: | awk '{print $2}')
 SwapFree=$(cat /proc/meminfo | grep ^SwapFree: | awk '{print $2}')
 Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
 # Get all disks usage
-DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | base64)
+DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | gzip -cf | base64)
+DISKs=$(base64prep "$DISKs")
 # Calculate Total Network Usage (bytes)
 RX=0
 TX=0
@@ -272,7 +274,8 @@ do
 	TX=$(echo "$TX" | awk {'printf "%18.0f",$1'} | xargs)
 	NICS=$NICS"|"$NIC";"$RX";"$TX";"
 done
-NICS=$(echo -ne "$NICS" | base64)
+NICS=$(echo -ne "$NICS" | gzip -cf | base64)
+NICS=$(base64prep "$NICS")
 # Check Services (if any are set to be checked)
 ServiceStatusString=""
 if [ ! -z "$CheckServices" ]
@@ -297,7 +300,8 @@ then
 		fi
 	done
 fi
-RAID=$(echo -ne "$RAID" | base64)
+RAID=$(echo -ne "$RAID" | gzip -cf | base64)
+RAID=$(base64prep "$RAID")
 # Check Drive Health
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
@@ -311,6 +315,22 @@ then
 			then
 				DHealth=$(smartctl -H /dev/$i)"\n$DHealth"
 				DH="$DH|1\n$i\n$DHealth\n"
+			else # If initial read has failed, see if drives are behind hardware raid
+				MegaRaid=($(smartctl --scan | grep megaraid | awk '{ print $(3) }'))
+				if [ ${#MegaRaid[@]} -gt 0 ]
+				then
+					MegaRaidN=0
+					for MegaRaidID in "${MegaRaid[@]}"
+					do
+						DHealth=$(smartctl -A -d $MegaRaidID /dev/$i)
+						if grep -q 'Attribute' <<< $DHealth
+						then
+							MegaRaidN=$((MegaRaidN + 1))
+							DHealth=$(smartctl -H -d $MegaRaidID /dev/$i)"\n$DHealth"
+							DH="$DH|1\n$i[$MegaRaidN]\n$DHealth\n"
+						fi
+					done
+				fi
 			fi
 		done
 	fi
@@ -330,7 +350,8 @@ then
 		done
 	fi
 fi
-DH=$(echo -ne "$DH" | base64)
+DH=$(echo -ne "$DH" | gzip -cf | base64)
+DH=$(base64prep "$DH")
 # Running Processes
 RPS1=""
 RPS2=""
@@ -340,7 +361,7 @@ then
 	RPS1=$(cat $ScriptPath/running_proc.txt)
 	# Get the current 'running processes' snapshot
 	RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etime,comm,cmd --no-headers)
-	RPS2=$(echo -ne "$RPS2" | base64)
+	RPS2=$(echo -ne "$RPS2" | gzip -cf | base64)
 	RPS2=$(base64prep "$RPS2")
 	# Save the current snapshot for next run
 	echo $RPS2 > $ScriptPath/running_proc.txt
