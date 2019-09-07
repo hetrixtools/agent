@@ -60,6 +60,8 @@ fi
 echo "Extracting configs from the old agent..."
 # SID (Server ID)
 SID=$(grep 'SID="' $AGENT | awk -F'"' '{ print $2 }')
+# Network Interfaces
+NetworkInterfaces=$(grep 'NetworkInterfaces="' $AGENT | awk -F'"' '{ print $2 }')
 # Check Services
 CheckServices=$(grep 'CheckServices="' $AGENT | awk -F'"' '{ print $2 }')
 # Check Software RAID Health
@@ -83,6 +85,14 @@ echo "... done."
 echo "Inserting Server ID (SID) into agent config..."
 sed -i "s/SIDPLACEHOLDER/$SID/" $AGENT
 echo "... done."
+
+# Check if any network interfaces are specified
+echo "Checking if any network interfaces are specified..."
+if [ ! -z "$NetworkInterfaces" ]
+then
+	echo "Network interfaces found, inserting them into the agent config..."
+	sed -i "s/NetworkInterfaces=\"\"/NetworkInterfaces=\"$NetworkInterfaces\"/" $AGENT
+fi
 
 # Check if any services are to be monitored
 echo "Checking if any services should be monitored..."
