@@ -7,6 +7,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 Version 1.5.9:
 - Added disk IO data collection.
+- Added disk inodes data collection.
 - Added ability to track the number of network connections on specific ports.
 
 Version 1.5.8:
