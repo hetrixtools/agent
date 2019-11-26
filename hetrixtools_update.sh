@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	version 1.5.8
-#	Copyright 2015 - 2019 @  HetrixTools
+#	version 1.5.9
+#	Copyright 2015 - 2020 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -75,6 +75,8 @@ then
 	RunningProcesses=0
 fi
 echo "... done."
+# Port Connections
+ConnectionPorts=$(grep 'ConnectionPorts="' $AGENT | awk -F'"' '{ print $2 }')
 
 # Fetching new agent
 echo "Fetching the new agent..."
@@ -127,6 +129,15 @@ if [ "$RunningProcesses" -eq "1" ]
 then
 	echo "Enabling 'View running processes' in the agent config..."
 	sed -i "s/RunningProcesses=0/RunningProcesses=1/" $AGENT
+fi
+echo "... done."
+
+# Check if any ports to monitor number of connections on
+echo "Checking if any ports to monitor number of connections on..."
+if [ ! -z "$ConnectionPorts" ]
+then
+	echo "Ports found, inserting them into the agent config..."
+	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$ConnectionPorts\"/" $AGENT
 fi
 echo "... done."
 
