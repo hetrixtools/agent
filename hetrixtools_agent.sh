@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.5.8
-#	Copyright 2015 - 2019 @  HetrixTools
+#	version 1.5.9
+#	Copyright 2015 - 2020 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -28,7 +28,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.5.8"
+VERSION="1.5.9"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -69,6 +69,11 @@ CheckDriveHealth=0
 # * whether or not to record the server's running processes and display them in your HetrixTools dashboard
 # * 0 - OFF (default) | 1 - ON
 RunningProcesses=0
+
+# Port Connections
+# * track network connections to specific ports
+# * supports up to 10 different ports, separated by comma (ie: "80,443,3306")
+ConnectionPorts=""
 
 ################################################
 ## CAUTION: Do not edit any of the code below ##
@@ -122,7 +127,9 @@ fi
 # Calculate how many times per minute should the data be collected (based on the `CollectEveryXSeconds` setting)
 RunTimes=$(($Runtime/$CollectEveryXSeconds))
 
-# Get starting minute
+# Start timers
+START=$(date +%s)
+tTIMEDIFF=0
 M=$(echo `date +%M` | sed 's/^0*//')
 if [ -z "$M" ]
 then
@@ -142,7 +149,6 @@ else
 fi
 # Get the initial network usage
 T=$(cat /proc/net/dev)
-START=$(date +%s)
 declare -A aRX
 declare -A aTX
 declare -A tRX
@@ -152,6 +158,33 @@ for NIC in "${NetworkInterfacesArray[@]}"
 do
 	aRX[$NIC]=$(echo "$T" | grep -w "$NIC" | awk '{print $2}')
 	aTX[$NIC]=$(echo "$T" | grep -w "$NIC" | awk '{print $10}')
+done
+
+# Port connections
+if [ ! -z "$ConnectionPorts" ]
+then
+	IFS=',' read -r -a ConnectionPortsArray <<< "$ConnectionPorts"
+	declare -A Connections
+	netstat=$(netstat -ntu)
+	for cPort in "${ConnectionPortsArray[@]}"
+	do
+		Connections[$cPort]=$(echo "$netstat" | grep -w "$cPort" | wc -l)
+	done
+fi
+
+# Disks IOPS
+declare -A vDISKs
+for i in $(df | awk '$1 ~ /\// {print}' | awk '{ print $(NF) }')
+do
+	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{ print $1 }')
+done
+declare -A IOPSRead
+declare -A IOPSWrite
+diskstats=$(cat /proc/diskstats)
+for i in ${!vDISKs[@]}
+do
+	IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
+	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
 done
 
 # Collect data loop
@@ -175,8 +208,9 @@ do
 	T=$(cat /proc/net/dev)
 	END=$(date +%s)
 	TIMEDIFF=$(echo | awk "{ print $END - $START }")
+	tTIMEDIFF=$(echo | awk "{ print $tTIMEDIFF + $TIMEDIFF }")
 	START=$(date +%s)
-		# Loop through network interfaces
+	# Loop through network interfaces
 	for NIC in "${NetworkInterfacesArray[@]}"
 	do
 		# Received Traffic
@@ -194,6 +228,15 @@ do
 		tTX[$NIC]=$(echo | awk "{ print ${tTX[$NIC]} + $TX }")
 		tTX[$NIC]=$(echo "${tTX[$NIC]}" | awk {'printf "%18.0f",$1'} | xargs)
 	done
+	# Port connections
+	if [ ! -z "$ConnectionPorts" ]
+	then
+		netstat=$(netstat -ntu)
+		for cPort in "${ConnectionPortsArray[@]}"
+		do
+			Connections[$cPort]=$(echo | awk "{ print ${Connections[$cPort]} + $(echo "$netstat" | grep -w "$cPort" | wc -l) }")
+		done
+	fi
 	# Check if minute changed, so we can end the loop
 	MM=$(echo `date +%M` | sed 's/^0*//')
 	if [ -z "$MM" ]
@@ -205,6 +248,20 @@ do
 		break
 	fi
 done
+
+# Disks IOPS
+IOPS=""
+diskstats=$(cat /proc/diskstats)
+for i in ${!vDISKs[@]}
+do
+	IOPSRead[$i]=$(echo | awk "{ print $(echo | awk "{ print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]} }") * 512 / $tTIMEDIFF}")
+	IOPSRead[$i]=$(echo ${IOPSRead[$i]} | awk {'printf "%18.0f",$1'} | xargs)
+	IOPSWrite[$i]=$(echo | awk "{ print $(echo | awk "{ print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]} }") * 512 / $tTIMEDIFF}")
+	IOPSWrite[$i]=$(echo ${IOPSWrite[$i]} | awk {'printf "%18.0f",$1'} | xargs)
+	IOPS=$IOPS"|"$i";"${IOPSRead[$i]}";"${IOPSWrite[$i]}
+done
+IOPS=$(echo -ne "$IOPS" | gzip -cf | base64)
+IOPS=$(base64prep "$IOPS")
 
 # Check if system requires reboot
 RequiresReboot=0
@@ -276,6 +333,19 @@ do
 done
 NICS=$(echo -ne "$NICS" | gzip -cf | base64)
 NICS=$(base64prep "$NICS")
+# Port connections
+CONN=""
+if [ ! -z "$ConnectionPorts" ]
+then
+	for cPort in "${ConnectionPortsArray[@]}"
+	do
+		CON=$(echo | awk "{ print ${Connections[$cPort]} / $X }")
+		CON=$(echo "$CON" | awk {'printf "%18.0f",$1'} | xargs)
+		CONN=$CONN"|"$cPort";"$CON
+	done
+fi
+CONN=$(echo -ne "$CONN" | base64)
+CONN=$(base64prep "$CONN")
 # Check Services (if any are set to be checked)
 ServiceStatusString=""
 if [ ! -z "$CheckServices" ]
@@ -368,7 +438,7 @@ then
 fi
 
 # Prepare data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2|$IOPS|$CONN"
 POST="v=$VERSION&s=$SID&d=$DATA"
 # Save data to file
 echo $POST > $ScriptPath/hetrixtools_agent.log
