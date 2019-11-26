@@ -115,6 +115,15 @@ then
 fi
 echo "... done."
 
+# Check if any ports to monitor number of connections on
+echo "Checking if any ports to monitor number of connections on..."
+if [ "$7" != "0" ]
+then
+	echo "Ports found, inserting them into the agent config..."
+	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$7\"/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
+
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."
 ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
