@@ -318,6 +318,9 @@ Swap=$(echo | awk "{ print 100 - (($SwapFree / $SwapSize) * 100) }")
 # Get all disks usage
 DISKs=$(echo -ne $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | gzip -cf | base64)
 DISKs=$(base64prep "$DISKs")
+# Get all disks inodes
+DISKi=$(echo -ne $(df -i | awk '$1 ~ /\// {print}' | awk '{ print $(NF)","$2","$3","$4";" }') | gzip -cf | base64)
+DISKi=$(base64prep "$DISKi")
 # Calculate Total Network Usage (bytes)
 RX=0
 TX=0
@@ -438,7 +441,7 @@ then
 fi
 
 # Prepare data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2|$IOPS|$CONN"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2|$IOPS|$CONN|$DISKi"
 POST="v=$VERSION&s=$SID&d=$DATA"
 # Save data to file
 echo $POST > $ScriptPath/hetrixtools_agent.log
