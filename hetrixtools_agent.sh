@@ -403,6 +403,7 @@ then
 							DH="$DH|1\n$i[$MegaRaidN]\n$DHealth\n"
 						fi
 					done
+					break
 				fi
 			fi
 		done
