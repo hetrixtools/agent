@@ -38,3 +38,8 @@ Version 1.5.2:
 - Multiple Disks Support (up to 10 disks)
 - Service Monitor (up to 10 services)
 
+---
+
+### Unofficial forks:
+- SmartOS/Solaris: https://github.com/sunfoxcz/hetrixtools-agent-smartos/tree/smartos
+- OpenBSD: https://github.com/sholwe/hetrixtools-agent-openbsd
