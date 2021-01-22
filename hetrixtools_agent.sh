@@ -3,7 +3,7 @@
 #
 #	HetrixTools Server Monitoring Agent
 #	version 1.5.9
-#	Copyright 2015 - 2020 @  HetrixTools
+#	Copyright 2015 - 2021 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -114,14 +114,14 @@ function base64prep() {
 
 # Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
 # so when a new cycle starts there shouldn't be any lingering agents around, but just in case, so they won't stack)
-HTProcesses=$(ps -eo user=|sort|uniq -c | grep hetrixtools | awk -F " " '{print $1}')
+HTProcesses=$(ps aux | grep -ie hetrixtools_agent.sh | grep -v grep | wc -l)
 if [ -z "$HTProcesses" ]
 then
 	HTProcesses=0
 fi
-if [ "$HTProcesses" -gt 300 ]
+if [ "$HTProcesses" -gt 15 ]
 then
-	ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
+	ps aux | grep -ie hetrixtools_agent.sh | grep -v grep | awk '{print $2}' | xargs kill -9
 fi
 
 # Calculate how many times per minute should the data be collected (based on the `CollectEveryXSeconds` setting)
