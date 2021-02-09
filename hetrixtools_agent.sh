@@ -165,10 +165,10 @@ if [ ! -z "$ConnectionPorts" ]
 then
 	IFS=',' read -r -a ConnectionPortsArray <<< "$ConnectionPorts"
 	declare -A Connections
-	netstat=$(netstat -ntu | awk '{print $4}')
+	ss=$(ss -ntu | awk '{print $5}')
 	for cPort in "${ConnectionPortsArray[@]}"
 	do
-		Connections[$cPort]=$(echo "$netstat" | grep ":$cPort$" | wc -l)
+		Connections[$cPort]=$(echo "$ss" | grep ":$cPort$" | wc -l)
 	done
 fi
 
@@ -231,10 +231,10 @@ do
 	# Port connections
 	if [ ! -z "$ConnectionPorts" ]
 	then
-		netstat=$(netstat -ntu | awk '{print $4}')
+		ss=$(ss -ntu | awk '{print $5}')
 		for cPort in "${ConnectionPortsArray[@]}"
 		do
-			Connections[$cPort]=$(echo | awk "{ print ${Connections[$cPort]} + $(echo "$netstat" | grep ":$cPort$" | wc -l) }")
+			Connections[$cPort]=$(echo | awk "{ print ${Connections[$cPort]} + $(echo "$ss" | grep ":$cPort$" | wc -l) }")
 		done
 	fi
 	# Check if minute changed, so we can end the loop
