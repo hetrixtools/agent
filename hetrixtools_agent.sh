@@ -23,7 +23,8 @@
 ## Settings ##
 ##############
 
-# Set PATH
+# Set PATH/Locale
+export LC_NUMERIC="en_US.UTF-8"
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
