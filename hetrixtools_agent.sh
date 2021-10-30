@@ -113,8 +113,7 @@ function base64prep() {
 	echo $str
 }
 
-# Kill any lingering agent processes (there shouldn't be any, the agent should finish its job within ~50 seconds, 
-# so when a new cycle starts there shouldn't be any lingering agents around, but just in case, so they won't stack)
+# Kill any lingering agent processes
 HTProcesses=$(ps aux | grep -ie hetrixtools_agent.sh | grep -v grep | wc -l)
 if [ -z "$HTProcesses" ]
 then
@@ -124,6 +123,14 @@ if [ "$HTProcesses" -gt 15 ]
 then
 	ps aux | grep -ie hetrixtools_agent.sh | grep -v grep | awk '{print $2}' | xargs kill -9
 fi
+for PID in `ps -ef | grep "hetrixtools_agent.sh" | awk '{print $2}'`
+do
+	PID_TIME=$(ps -p $PID -oetime= | tr '-' ':' | awk -F: '{ total=0; m=1; } { for (i=0; i < NF; i++) {total += $(NF-i)*m; m *= i >= 2 ? 24 : 60 }} {print total}')
+	if [ ! -z "$PID_TIME" ] && [ "$PID_TIME" -ge 120 ]
+	then
+		kill -9 $PID
+	fi
+done
 
 # Calculate how many times per minute should the data be collected (based on the `CollectEveryXSeconds` setting)
 RunTimes=$(($Runtime/$CollectEveryXSeconds))
