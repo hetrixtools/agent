@@ -76,6 +76,13 @@ RunningProcesses=0
 # * supports up to 10 different ports, separated by comma (ie: "80,443,3306")
 ConnectionPorts=""
 
+# Config Override file
+# Create a file called "hetrixtools_agent.conf" in the script directory instead of modifying the above variables
+# to allow easy git pulls / updates
+if [ -f "$ScriptPath/hetrixtools_agent.conf" ]; then
+	source "$ScriptPath/hetrixtools_agent.conf"
+fi
+
 ################################################
 ## CAUTION: Do not edit any of the code below ##
 ################################################
