@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 1.6.0:
+- Bash code improvements ( thanks to https://www.shellcheck.net/ ).
+- Fixed warning messages for servers without swap.
+
 Version 1.5.9:
 - Added disk IO data collection.
 - Added disk inodes data collection.
