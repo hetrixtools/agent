@@ -190,6 +190,12 @@ do
 done
 declare -A IOPSRead
 declare -A IOPSWrite
+for i in "${!vDISKs[@]}"
+do
+	IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
+	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
+done
+
 # Collect data loop
 for X in $(seq $RunTimes)
 do
