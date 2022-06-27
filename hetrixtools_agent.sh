@@ -186,14 +186,24 @@ declare -A vDISKs
 diskstats=$(cat /proc/diskstats)
 for i in $(df | awk '$1 ~ /\// {print}' | awk '{print $(NF)}')
 do
-	vDISKs[$i]=$(echo "$diskstats" | grep -w "$(lsblk -l | grep -w "$i" | sed -E 's/.* ([0-9]+):([0-9]+).*/\1 *\2/')" |awk '{print $3}')
+	REGEX=$(lsblk -l | grep -w "$i" | sed -E 's/.* ([0-9]+):([0-9]+).*/\1 *\2/')
+	if [ "$REGEX" != "" ]; then
+		vDISKs[$i]=$(echo "$diskstats" | grep -w "$REGEX" |awk '{print $3}')
+	else
+		vDISKs[$i]="#NOBLK#"
+	fi
 done
 declare -A IOPSRead
 declare -A IOPSWrite
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
-	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
+	if [ "${vDISKs[$i]}" != "#NOBLK#" ]; then
+		IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
+		IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
+	else
+		IOPSRead[$i]=0
+		IOPSWrite[$i]=0
+	fi
 done
 
 # Collect data loop
@@ -263,10 +273,15 @@ IOPS=""
 diskstats=$(cat /proc/diskstats)
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}") * 512 / $tTIMEDIFF}")
-	IOPSRead[$i]=$(echo "${IOPSRead[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
-	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}") * 512 / $tTIMEDIFF}")
-	IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
+	if [ "${vDISKs[$i]}" != "#NOBLK#" ]; then
+		IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}") * 512 / $tTIMEDIFF}")
+		IOPSRead[$i]=$(echo "${IOPSRead[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
+		IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}") * 512 / $tTIMEDIFF}")
+		IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
+	else
+		IOPSRead[$i]=0
+		IOPSWrite[$i]=0
+	fi
 	IOPS="$IOPS|$i;${IOPSRead[$i]};${IOPSWrite[$i]}"
 done
 IOPS=$(echo -ne "$IOPS" | gzip -cf | base64)
