@@ -183,19 +183,13 @@ fi
 
 # Disks IOPS
 declare -A vDISKs
+diskstats=$(cat /proc/diskstats)
 for i in $(df | awk '$1 ~ /\// {print}' | awk '{print $(NF)}')
 do
-	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
+	vDISKs[$i]=$(echo "$diskstats" | grep -w "$(lsblk -l | grep -w "$i" | sed -E 's/.* ([0-9]+):([0-9]+).*/\1 *\2/')" |awk '{print $3}')
 done
 declare -A IOPSRead
 declare -A IOPSWrite
-diskstats=$(cat /proc/diskstats)
-for i in "${!vDISKs[@]}"
-do
-	IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
-	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
-done
-
 # Collect data loop
 for X in $(seq $RunTimes)
 do
