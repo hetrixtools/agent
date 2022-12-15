@@ -2,8 +2,8 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	version 1.5.9
-#	Copyright 2015 - 2020 @  HetrixTools
+#	version 1.6.0
+#	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -80,7 +80,7 @@ ConnectionPorts=$(grep 'ConnectionPorts="' $AGENT | awk -F'"' '{ print $2 }')
 
 # Fetching new agent
 echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO $AGENT --no-check-certificate https://raw.github.com/hetrixtools/agent/$VERS/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO $AGENT --no-check-certificate https://raw.githubusercontent.com/hetrixtools/agent/$VERS/hetrixtools_agent.sh
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
