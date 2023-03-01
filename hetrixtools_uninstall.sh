@@ -3,7 +3,7 @@
 #
 #	HetrixTools Server Monitoring Agent - Uninstall Script
 #	version 1.5.9
-#	Copyright 2015 - 2020 @  HetrixTools
+#	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -79,7 +79,7 @@ echo "... done."
 # Let HetrixTools platform know uninstall has been completed
 echo "Letting HetrixTools platform know the uninstallation has been completed..."
 POST="v=uninstall&s=$SID"
-wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.net/ &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" https://sm.hetrixtools.net/ &> /dev/null
 echo "... done."
 
 # All done
