@@ -71,7 +71,7 @@ echo "... done."
 
 # Fetching new agent
 echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh --no-check-certificate https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_agent.sh
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
@@ -180,7 +180,7 @@ echo "... done."
 # Let HetrixTools platform know install has been completed
 echo "Letting HetrixTools platform know the installation has been completed..."
 POST="v=install&s=$SID"
-wget -t 1 -T 30 -qO- --post-data "$POST" --no-check-certificate https://sm.hetrixtools.net/ &> /dev/null
+wget -t 1 -T 30 -qO- --post-data "$POST" https://sm.hetrixtools.net/ &> /dev/null
 echo "... done."
 
 # Start the agent
