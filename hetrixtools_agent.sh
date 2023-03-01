@@ -3,7 +3,7 @@
 #
 #	HetrixTools Server Monitoring Agent
 #	version 1.6.0
-#	Copyright 2015 - 2022 @  HetrixTools
+#	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -463,4 +463,4 @@ POST="v=$VERSION&s=$SID&d=$DATA"
 echo "$POST" > "$ScriptPath"/hetrixtools_agent.log
 
 # Post data
-wget -t 1 -T 30 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" --no-check-certificate https://sm.hetrixtools.net/ &> /dev/null
+wget -t 1 -T 30 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" https://sm.hetrixtools.net/ &> /dev/null
