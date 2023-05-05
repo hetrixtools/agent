@@ -5,6 +5,11 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 1.6.1:
+- Added `timeout` to some calls to prevent them from freezing the agent script entirely in certain rare cases
+- Improved metrics posting with retries when the initial try fails
+- Improved disk detection for disk usage metrics (certain disks were not being detected before)
+
 Version 1.6.0:
 - Bash code improvements ( thanks to https://www.shellcheck.net/ ).
 - Fixed warning messages for servers without swap.

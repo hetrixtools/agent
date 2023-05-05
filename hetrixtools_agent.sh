@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.6.0
+#	version 1.6.1
 #	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -29,7 +29,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.6.0"
+VERSION="1.6.1"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
@@ -183,7 +183,7 @@ fi
 
 # Disks IOPS
 declare -A vDISKs
-for i in $(df | awk '$1 ~ /\// {print}' | awk '{print $(NF)}')
+for i in $(timeout 3 df | awk '$1 ~ /\// {print}' | awk '{print $(NF)}')
 do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
 done
@@ -292,7 +292,7 @@ elif [ -f /etc/redhat-release ]
 then
 	OS=$(cat /etc/redhat-release)
 	# Check if system requires reboot (Only supported in CentOS/RHEL 7 and later, with yum-utils installed)
-	if needs-restarting -r | grep -q 'Reboot is required'
+	if timeout 5 needs-restarting -r | grep -q 'Reboot is required'
 	then
 		RequiresReboot=1
 	fi
@@ -330,10 +330,10 @@ else
 	Swap=0
 fi
 # Get all disks usage
-DISKs=$(echo -ne "$(df -PB1 | awk '$1 ~ /\// {print}' | awk '{print $(NF)","$2","$3","$4";"}')" | gzip -cf | base64)
+DISKs=$(echo -ne "$(timeout 3 df -TPB1 | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | gzip -cf | base64)
 DISKs=$(base64prep "$DISKs")
 # Get all disks inodes
-DISKi=$(echo -ne "$(df -i | awk '$1 ~ /\// {print}' | awk '{print $(NF)","$2","$3","$4";"}')" | gzip -cf | base64)
+DISKi=$(echo -ne "$(timeout 3 df -Ti | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | gzip -cf | base64)
 DISKi=$(base64prep "$DISKi")
 # Calculate Total Network Usage (bytes)
 RX=0
@@ -377,12 +377,12 @@ fi
 RAID=""
 if [ "$CheckSoftRAID" -gt 0 ]
 then
-	for i in $(df -PB1 | awk '$1 ~ /\// {print}' | awk '{print $1}')
+	for i in $(timeout 3 df -PB1 | awk '$1 ~ /\// {print}' | awk '{print $1}')
 	do
 		mdadm=$(mdadm -D "$i")
 		if [ -n "$mdadm" ]
 		then
-			mnt=$(df -PB1 | grep "$i" | awk '{print $(NF)}')
+			mnt=$(timeout 3 df -PB1 | grep "$i" | awk '{print $(NF)}')
 			RAID="$RAID|$mnt;$i;$mdadm;"
 		fi
 	done
@@ -463,4 +463,4 @@ POST="v=$VERSION&s=$SID&d=$DATA"
 echo "$POST" > "$ScriptPath"/hetrixtools_agent.log
 
 # Post data
-wget -t 1 -T 30 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" https://sm.hetrixtools.net/ &> /dev/null
+wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" https://sm.hetrixtools.net/ &> /dev/null
