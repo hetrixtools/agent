@@ -292,7 +292,7 @@ elif [ -f /etc/redhat-release ]
 then
 	OS=$(cat /etc/redhat-release)
 	# Check if system requires reboot (Only supported in CentOS/RHEL 7 and later, with yum-utils installed)
-	if timeout 5 needs-restarting -r | grep -q 'Reboot is required'
+	if timeout -s 9 5 needs-restarting -r | grep -q 'Reboot is required'
 	then
 		RequiresReboot=1
 	fi
