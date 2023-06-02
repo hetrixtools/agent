@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 1.6.2:
+- improved the `timeout` command for `needs-restarting` which would still hang in rare cases (thanks to @BetTD)
+
 Version 1.6.1:
 - Added `timeout` to some calls to prevent them from freezing the agent script entirely in certain rare cases
 - Improved metrics posting with retries when the initial try fails

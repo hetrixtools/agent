@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	version 1.6.1
+#	version 1.6.2
 #	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -29,7 +29,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-VERSION="1.6.1"
+VERSION="1.6.2"
 
 # SID (Server ID - automatically assigned on installation, do not change this)
 # DO NOT share this ID with anyone
