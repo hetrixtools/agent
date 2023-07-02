@@ -469,7 +469,7 @@ then
 	# Get initial 'temperature' snapshot, saved from last run
 	TS1=$(cat "$ScriptPath"/temp_snapshot.txt)
 	# Get the current temp snapshot
-	TS2=$(paste <(cat /sys/class/thermal/thermal_zone*/type) <(cat /sys/class/thermal/thermal_zone*/temp) | sed 's/\(.\)..$/.\1°C/')
+	TS2=$(paste <(cat /sys/class/thermal/thermal_zone*/type) <(cat /sys/class/thermal/thermal_zone*/temp))
 	TS2=$(echo -ne "$TS2" | gzip -cf | base64)
 	TS2=$(base64prep "$TS2")
 	# Save the current snapshot for next run
