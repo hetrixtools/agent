@@ -71,6 +71,11 @@ CheckDriveHealth=0
 # * 0 - OFF (default) | 1 - ON
 RunningProcesses=0
 
+# Check Temperature 
+# * whether or not to record the server's temperatures and display them in your HetrixTools dashboard
+# * 0 - OFF (default) | 1 - ON
+Temperature=0
+
 # Port Connections
 # * track network connections to specific ports
 # * supports up to 10 different ports, separated by comma (ie: "80,443,3306")
@@ -456,8 +461,23 @@ then
 	echo "$RPS2" > "$ScriptPath"/running_proc.txt
 fi
 
+TS1=""
+TS2=""
+# grab temperature
+if [ "$Temperature" -gt 0 ]
+then
+	# Get initial 'temperature' snapshot, saved from last run
+	TS1=$(cat "$ScriptPath"/temp_snapshot.txt)
+	# Get the current temp snapshot
+	TS2=$(paste <(cat /sys/class/thermal/thermal_zone*/type) <(cat /sys/class/thermal/thermal_zone*/temp) | sed 's/\(.\)..$/.\1°C/')
+	TS2=$(echo -ne "$TS2" | gzip -cf | base64)
+	TS2=$(base64prep "$TS2")
+	# Save the current snapshot for next run
+	echo "$TS2" > "$ScriptPath"/temp_snapshot.txt
+fi
+
 # Prepare data
-DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2|$IOPS|$CONN|$DISKi"
+DATA="$OS|$Uptime|$CPUModel|$CPUSpeed|$CPUCores|$CPU|$IOW|$RAMSize|$RAM|$SwapSize|$Swap|$DISKs|$NICS|$ServiceStatusString|$RAID|$DH|$RPS1|$RPS2|$IOPS|$CONN|$DISKi|$TS1|$TS2"
 POST="v=$VERSION&s=$SID&d=$DATA"
 # Save data to file
 echo "$POST" > "$ScriptPath"/hetrixtools_agent.log

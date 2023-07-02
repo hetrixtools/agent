@@ -123,7 +123,14 @@ then
 	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$7\"/" /etc/hetrixtools/hetrixtools_agent.sh
 fi
 echo "... done."
-
+# Check if temperature monitoring should be enabled
+echo "Checking if 'Temperature' should be enabled.."
+if [ "$8" -eq "1" ]
+then
+	echo "Enabling 'Temperature' in the agent config...."
+	sed -i "s/Temperature=0/Temperature=1/" /etc/hetrixtools/hetrixtools_agent.sh
+fi
+echo "... done."
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."
 ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9

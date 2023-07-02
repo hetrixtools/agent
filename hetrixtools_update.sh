@@ -70,9 +70,17 @@ CheckSoftRAID=$(grep 'CheckSoftRAID=' $AGENT | awk -F'=' '{ print $2 }')
 CheckDriveHealth=$(grep 'CheckDriveHealth=' $AGENT | awk -F'=' '{ print $2 }')
 # RunningProcesses
 RunningProcesses=$(grep 'RunningProcesses=' $AGENT | awk -F'=' '{ print $2 }')
+# Temperature
+Temperature=$(grep 'Temperature=' $AGENT | awk -F'=' '{ print $2 }')
+
 if [ -z "$RunningProcesses" ]
 then
 	RunningProcesses=0
+fi
+
+if [ -z "$Temperature" ]
+then
+	Temperature=0
 fi
 echo "... done."
 # Port Connections
@@ -129,6 +137,15 @@ if [ "$RunningProcesses" -eq "1" ]
 then
 	echo "Enabling 'View running processes' in the agent config..."
 	sed -i "s/RunningProcesses=0/RunningProcesses=1/" $AGENT
+fi
+echo "... done."
+
+# Check if 'Temperature' should be enabled
+echo "Checking if 'Temperature' should be enabled..."
+if [ "$Temperature" -eq "1" ]
+then
+	echo "Enabling 'Temperature' in the agent config..."
+	sed -i "s/Temperature=0/Temperature=1/" $AGENT
 fi
 echo "... done."
 
