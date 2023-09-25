@@ -2,7 +2,6 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	version 1.6.0
 #	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -28,7 +27,7 @@ AGENT="/etc/hetrixtools/hetrixtools_agent.sh"
 # Check if user specified version to update to
 if [ -z "$1" ]
 then
-	VERS="master"
+	VERS="1.6.x"
 else
 	VERS=$1
 fi

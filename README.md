@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 1.6.3:
+- moving to 1.6.x branch
+- minor changes
+
 Version 1.6.2:
 - improved the `timeout` command for `needs-restarting` which would still hang in rare cases (thanks to @BetTD)
 

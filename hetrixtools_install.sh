@@ -2,7 +2,6 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.6.0
 #	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -71,7 +70,7 @@ echo "... done."
 
 # Fetching new agent
 echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/1.6.x/hetrixtools_agent.sh
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
