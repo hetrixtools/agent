@@ -63,11 +63,11 @@ echo "Looking for the old config file..."
 if [ -f "$CONFIG" ]
 then
 	echo "... done."
-	echo "Upgrading from v1..."
+	echo "Upgrading from v2..."
 	EXTRACT=$CONFIG
 else
 	echo "... done."
-	echo "Upgrading from v2..."
+	echo "Upgrading from v1..."
 	EXTRACT=$AGENT
 fi
 
