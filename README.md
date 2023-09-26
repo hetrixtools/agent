@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.0.4:
+- fixed a bug where data was not properly being formatted in some cases when monitoring running processes
+
 Version 2.0.3:
 - initial v2 release
 

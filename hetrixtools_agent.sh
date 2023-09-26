@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.3"
+Version="2.0.4"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -580,7 +580,7 @@ then
 	fi
 	# Get the current 'running processes' snapshot
 	RPS2=$(ps -Ao pid,ppid,uid,user:20,pcpu,pmem,cputime,etime,comm,cmd --no-headers)
-	RPS2=$(echo -ne "$RPS2" | base64 | xargs | sed 's/ //g')
+	RPS2=$(echo -ne "$RPS2" | base64 -w 0 | sed 's/ //g')
 	# Save the current snapshot for next run
 	echo "$RPS2" > "$ScriptPath"/running_proc.txt
 fi
@@ -599,7 +599,7 @@ Time=$(date +%Y-%m-%d\ %T\ %Z | base64 | xargs | sed 's/ //g')
 json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'","os":"'"$OS"'","kernel":"'"$Kernel"'","hostname":"'"$Hostname"'","time":"'"$Time"'","reqreboot":"'"$RequiresReboot"'","uptime":"'"$Uptime"'","cpumodel":"'"$CPUModel"'","cpusockets":"'"$CPUSockets"'","cpucores":"'"$CPUCores"'","cputhreads":"'"$CPUThreads"'","cpuspeed":"'"$CPUSpeed"'","cpu":"'"$CPU"'","wa":"'"$CPUwa"'","st":"'"$CPUst"'","us":"'"$CPUus"'","sy":"'"$CPUsy"'","load1":"'"$loadavg1"'","load5":"'"$loadavg5"'","load15":"'"$loadavg15"'","ramsize":"'"$RAMSize"'","ram":"'"$RAM"'","ramswapsize":"'"$RAMSwapSize"'","ramswap":"'"$RAMSwap"'","rambuff":"'"$RAMBuff"'","ramcache":"'"$RAMCache"'","disks":"'"$DISKs"'","inodes":"'"$INODEs"'","iops":"'"$IOPS"'","raid":"'"$RAID"'","dh":"'"$DH"'","nics":"'"$NICS"'","ipv4":"'"$IPv4"'","ipv6":"'"$IPv6"'","conn":"'"$CONN"'","temp":"'"$TEMP"'","serv":"'"$SRVCS"'","cust":"'"$CV"'","rps1":"'"$RPS1"'","rps2":"'"$RPS2"'"}'
 
 # Compress payload
-jsoncomp=$(echo -ne "$json" | gzip -cf | base64 | xargs | sed 's/ //g' | sed 's/\//%2F/g' | sed 's/+/%2B/g')
+jsoncomp=$(echo -ne "$json" | gzip -cf | base64 -w 0 | sed 's/ //g' | sed 's/\//%2F/g' | sed 's/+/%2B/g')
 
 # Save data to file
 echo "j=$jsoncomp" > "$ScriptPath"/hetrixtools_agent.log
