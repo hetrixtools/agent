@@ -2,7 +2,6 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	version 1.6.0
 #	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -25,12 +24,15 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Old Agent Path
 AGENT="/etc/hetrixtools/hetrixtools_agent.sh"
 
-# Check if user specified version to update to
+# Old Config Path
+CONFIG="/etc/hetrixtools/hetrixtools.cfg"
+
+# Check if user specified branch to update to
 if [ -z "$1" ]
 then
-	VERS="master"
+	BRANCH="2.0.x"
 else
-	VERS=$1
+	BRANCH=$1
 fi
 
 # Check if install script is run by root
@@ -56,36 +58,61 @@ else
 	echo "ERROR: No old agent found. Nothing to update." >&2; exit 1;
 fi
 
+# Look for the old config
+echo "Looking for the old config file..."
+if [ -f "$CONFIG" ]
+then
+	echo "... done."
+	echo "Upgrading from v1..."
+	EXTRACT=$CONFIG
+else
+	echo "... done."
+	echo "Upgrading from v2..."
+	EXTRACT=$AGENT
+fi
+
 # Extract data from the old agent
 echo "Extracting configs from the old agent..."
 # SID (Server ID)
-SID=$(grep 'SID="' $AGENT | awk -F'"' '{ print $2 }')
+SID=$(grep 'SID="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Network Interfaces
-NetworkInterfaces=$(grep 'NetworkInterfaces="' $AGENT | awk -F'"' '{ print $2 }')
+NetworkInterfaces=$(grep 'NetworkInterfaces="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Check Services
-CheckServices=$(grep 'CheckServices="' $AGENT | awk -F'"' '{ print $2 }')
+CheckServices=$(grep 'CheckServices="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Check Software RAID Health
-CheckSoftRAID=$(grep 'CheckSoftRAID=' $AGENT | awk -F'=' '{ print $2 }')
+CheckSoftRAID=$(grep 'CheckSoftRAID=' $EXTRACT | awk -F'=' '{ print $2 }')
 # Check Drive Health
-CheckDriveHealth=$(grep 'CheckDriveHealth=' $AGENT | awk -F'=' '{ print $2 }')
+CheckDriveHealth=$(grep 'CheckDriveHealth=' $EXTRACT | awk -F'=' '{ print $2 }')
 # RunningProcesses
-RunningProcesses=$(grep 'RunningProcesses=' $AGENT | awk -F'=' '{ print $2 }')
+RunningProcesses=$(grep 'RunningProcesses=' $EXTRACT | awk -F'=' '{ print $2 }')
 if [ -z "$RunningProcesses" ]
 then
 	RunningProcesses=0
 fi
 echo "... done."
 # Port Connections
-ConnectionPorts=$(grep 'ConnectionPorts="' $AGENT | awk -F'"' '{ print $2 }')
+ConnectionPorts=$(grep 'ConnectionPorts="' $EXTRACT | awk -F'"' '{ print $2 }')
+if [ -f "$CONFIG" ]
+then
+	# Custom Variables
+	CustomVars=$(grep 'CustomVars="' $EXTRACT | awk -F'"' '{ print $2 }')
+	# Secured Connection
+	SecuredConnection=$(grep 'SecuredConnection=' $EXTRACT | awk -F'=' '{ print $2 }')
+fi
 
-# Fetching new agent
+# Fetching the new agent
 echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO $AGENT https://raw.githubusercontent.com/hetrixtools/agent/$VERS/hetrixtools_agent.sh
+wget -t 1 -T 30 -qO $AGENT https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+echo "... done."
+
+# Fetching the new config file
+echo "Fetching the new config file..."
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools.cfg https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools.cfg
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
 echo "Inserting Server ID (SID) into agent config..."
-sed -i "s/SIDPLACEHOLDER/$SID/" $AGENT
+sed -i "s/SID=\"\"/SID=\"$SID\"/" /etc/hetrixtools/hetrixtools.cfg
 echo "... done."
 
 # Check if any network interfaces are specified
@@ -93,7 +120,7 @@ echo "Checking if any network interfaces are specified..."
 if [ ! -z "$NetworkInterfaces" ]
 then
 	echo "Network interfaces found, inserting them into the agent config..."
-	sed -i "s/NetworkInterfaces=\"\"/NetworkInterfaces=\"$NetworkInterfaces\"/" $AGENT
+	sed -i "s/NetworkInterfaces=\"\"/NetworkInterfaces=\"$NetworkInterfaces\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
 
 # Check if any services are to be monitored
@@ -101,7 +128,7 @@ echo "Checking if any services should be monitored..."
 if [ ! -z "$CheckServices" ]
 then
 	echo "Services found, inserting them into the agent config..."
-	sed -i "s/CheckServices=\"\"/CheckServices=\"$CheckServices\"/" $AGENT
+	sed -i "s/CheckServices=\"\"/CheckServices=\"$CheckServices\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -110,7 +137,7 @@ echo "Checking if software RAID should be monitored..."
 if [ "$CheckSoftRAID" -eq "1" ]
 then
 	echo "Enabling software RAID monitoring in the agent config..."
-	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" $AGENT
+	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -119,7 +146,7 @@ echo "Checking if Drive Health should be monitored..."
 if [ "$CheckDriveHealth" -eq "1" ]
 then
 	echo "Enabling Drive Health monitoring in the agent config..."
-	sed -i "s/CheckDriveHealth=0/CheckDriveHealth=1/" $AGENT
+	sed -i "s/CheckDriveHealth=0/CheckDriveHealth=1/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -128,7 +155,7 @@ echo "Checking if 'View running processes' should be enabled..."
 if [ "$RunningProcesses" -eq "1" ]
 then
 	echo "Enabling 'View running processes' in the agent config..."
-	sed -i "s/RunningProcesses=0/RunningProcesses=1/" $AGENT
+	sed -i "s/RunningProcesses=0/RunningProcesses=1/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -137,9 +164,25 @@ echo "Checking if any ports to monitor number of connections on..."
 if [ ! -z "$ConnectionPorts" ]
 then
 	echo "Ports found, inserting them into the agent config..."
-	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$ConnectionPorts\"/" $AGENT
+	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$ConnectionPorts\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
+
+# Check if any custom variables are specified
+echo "Checking if any custom variables are specified..."
+if [ ! -z "$CustomVars" ]
+then
+    echo "Custom variables found, inserting them into the agent config..."
+    sed -i "s/CustomVars=\"\"/CustomVars=\"$CustomVars\"/" /etc/hetrixtools/hetrixtools.cfg
+fi
+
+# Check if secured connection is enabled
+echo "Checking if secured connection is enabled..."
+if [ ! -z "$SecuredConnection" ]
+then
+    echo "Inserting secured connection in the agent config..."
+    sed -i "s/SecuredConnection=1/SecuredConnection=$SecuredConnection/" /etc/hetrixtools/hetrixtools.cfg
+fi
 
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."

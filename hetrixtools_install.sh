@@ -2,7 +2,6 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	version 1.6.0
 #	Copyright 2015 - 2023 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
@@ -21,6 +20,9 @@
 
 # Set PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Branch
+BRANCH="2.0.x"
 
 # Check if install script is run by root
 echo "Checking root privileges..."
@@ -69,14 +71,19 @@ echo "Creating the hetrixtools agent folder..."
 mkdir -p /etc/hetrixtools
 echo "... done."
 
-# Fetching new agent
-echo "Fetching the new agent..."
-wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/master/hetrixtools_agent.sh
+# Fetching the agent
+echo "Fetching the agent..."
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+echo "... done."
+
+# Fetching the config file
+echo "Fetching the config file..."
+wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools.cfg https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools.cfg
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
 echo "Inserting Server ID (SID) into agent config..."
-sed -i "s/SIDPLACEHOLDER/$SID/" /etc/hetrixtools/hetrixtools_agent.sh
+sed -i "s/SID=\"\"/SID=\"$SID\"/" /etc/hetrixtools/hetrixtools.cfg
 echo "... done."
 
 # Check if any services are to be monitored
@@ -84,7 +91,7 @@ echo "Checking if any services should be monitored..."
 if [ "$3" != "0" ]
 then
 	echo "Services found, inserting them into the agent config..."
-	sed -i "s/CheckServices=\"\"/CheckServices=\"$3\"/" /etc/hetrixtools/hetrixtools_agent.sh
+	sed -i "s/CheckServices=\"\"/CheckServices=\"$3\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -93,7 +100,7 @@ echo "Checking if software RAID should be monitored..."
 if [ "$4" -eq "1" ]
 then
 	echo "Enabling software RAID monitoring in the agent config..."
-	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" /etc/hetrixtools/hetrixtools_agent.sh
+	sed -i "s/CheckSoftRAID=0/CheckSoftRAID=1/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -102,7 +109,7 @@ echo "Checking if Drive Health should be monitored..."
 if [ "$5" -eq "1" ]
 then
 	echo "Enabling Drive Health monitoring in the agent config..."
-	sed -i "s/CheckDriveHealth=0/CheckDriveHealth=1/" /etc/hetrixtools/hetrixtools_agent.sh
+	sed -i "s/CheckDriveHealth=0/CheckDriveHealth=1/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -111,7 +118,7 @@ echo "Checking if 'View running processes' should be enabled..."
 if [ "$6" -eq "1" ]
 then
 	echo "Enabling 'View running processes' in the agent config..."
-	sed -i "s/RunningProcesses=0/RunningProcesses=1/" /etc/hetrixtools/hetrixtools_agent.sh
+	sed -i "s/RunningProcesses=0/RunningProcesses=1/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -120,7 +127,7 @@ echo "Checking if any ports to monitor number of connections on..."
 if [ "$7" != "0" ]
 then
 	echo "Ports found, inserting them into the agent config..."
-	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$7\"/" /etc/hetrixtools/hetrixtools_agent.sh
+	sed -i "s/ConnectionPorts=\"\"/ConnectionPorts=\"$7\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
