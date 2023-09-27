@@ -24,38 +24,35 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.4"
+Version="2.0.5"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
 then
-    . "$ScriptPath"/hetrixtools.cfg
+	. "$ScriptPath"/hetrixtools.cfg
 else
-    exit 1
+	exit 1
 fi
 
 # Service status function
 function servicestatus() {
-	if command -v "systemctl" > /dev/null 2>&1
-    then    # Use `systemctl` if available
-        if systemctl is-active --quiet "$1"
-        then
-            # Up
-            echo "$1,1"
-        else
-            # Down
-            echo "$1,0"
-        fi
-    else    # No systemctl, try via `ps`
-        if (( $(ps -ef | grep -w "$1" | grep -v "grep" | grep -v "/$1/" | wc -l) > 0 ))
-        then
-            # Up
-            echo "$1,1"
-        else
-            # Down
-            echo "$1,0"
-        fi
-    fi
+	# Check first via ps
+	if (( $(ps -ef | grep -E "[\/ ]$1[^\/]" | grep -v "grep" | wc -l) > 0 ))
+	then # Up
+		echo "$1,1"
+	else # Down, try with systemctl (if available)
+		if command -v "systemctl" > /dev/null 2>&1
+		then # Use systemctl
+			if systemctl is-active --quiet "$1"
+			then # Up
+				echo "$1,1"
+			else # Down
+				echo "$1,0"
+			fi
+		else # No systemctl
+			echo "$1,0"
+		fi
+	fi
 }
 
 # Function used to prepare base64 str for url encoding
@@ -104,7 +101,7 @@ then
 else
 	# Automatically detect the network interfaces
 	NetworkInterfacesArray=()
-    while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
+	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
 fi
 
 # Initial network usage
