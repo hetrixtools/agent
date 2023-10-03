@@ -6,7 +6,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 -= ChangeLog =-
 
 Version 2.0.7:  
-Improved CPU temperature reading by adding support for two third-party software `lm-sensors` and `ipmitool`.
+- Improved CPU temperature reading by adding support for two third-party software `lm-sensors` and `ipmitool`.
 
 Version 2.0.6:
 - Improved the `servicestatus` function.
