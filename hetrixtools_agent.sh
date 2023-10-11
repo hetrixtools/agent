@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.7"
+Version="2.0.8"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]

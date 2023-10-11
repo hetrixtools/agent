@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.0.8: 
+- Added support for Custom Variables: https://docs.hetrixtools.com/server-agent-custom-variables/ 
+- Fixed `needs-restarting` for CloudLinux 8 https://github.com/hetrixtools/agent/commit/7e87b191bab90f682d2f55cc0f2650b5f4f7e0c7 (thanks to @JLHC)
+
 Version 2.0.7:  
 - Improved CPU temperature reading by adding support for two third-party software `lm-sensors` and `ipmitool`.
 

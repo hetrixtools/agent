@@ -173,8 +173,9 @@ echo "Checking if any custom variables are specified..."
 if [ ! -z "$CustomVars" ]
 then
     echo "Custom variables found, inserting them into the agent config..."
-    sed -i "s/CustomVars=\"\"/CustomVars=\"$CustomVars\"/" /etc/hetrixtools/hetrixtools.cfg
+    sed -i "s/CustomVars=\"custom_variables.json\"/CustomVars=\"$CustomVars\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
+echo "... done."
 
 # Check if secured connection is enabled
 echo "Checking if secured connection is enabled..."
@@ -183,6 +184,7 @@ then
     echo "Inserting secured connection in the agent config..."
     sed -i "s/SecuredConnection=1/SecuredConnection=$SecuredConnection/" /etc/hetrixtools/hetrixtools.cfg
 fi
+echo "... done."
 
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."
