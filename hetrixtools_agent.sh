@@ -348,11 +348,15 @@ then
 elif [ -f /etc/redhat-release ]
 then
 	OS=$(cat /etc/redhat-release)
-	# Check if system requires reboot (Only supported in CentOS/RHEL 7 and later, with yum-utils installed)
-	if timeout -s 9 5 needs-restarting -r | grep -q 'Reboot is required'
-	then
-		RequiresReboot=1
-	fi
+
+ 	# Check if system is CloudLinux release 8 (CL8 will only output "This system is receiving updates from CloudLinux Network server.")
+  	if [[ "$OS" != "CloudLinux release 8."* ]]; then
+		# Check if system requires reboot (Only supported in CentOS/RHEL 7 and later, with yum-utils installed)
+		if timeout -s 9 5 needs-restarting -r | grep -q 'Reboot is required'
+		then
+			RequiresReboot=1
+		fi
+  	fi
 # If all else fails
 else
 	OS="$(uname -s)"
