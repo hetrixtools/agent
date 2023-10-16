@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.8"
+Version="2.0.9"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -350,7 +350,8 @@ then
 	OS=$(cat /etc/redhat-release)
 
  	# Check if system is CloudLinux release 8 (CL8 will only output "This system is receiving updates from CloudLinux Network server.")
-  	if [[ "$OS" != "CloudLinux release 8."* ]]; then
+  	if [[ "$OS" != "CloudLinux release 8."* ]]
+	then
 		# Check if system requires reboot (Only supported in CentOS/RHEL 7 and later, with yum-utils installed)
 		if timeout -s 9 5 needs-restarting -r | grep -q 'Reboot is required'
 		then
@@ -531,7 +532,7 @@ then
 		mdadm=$(mdadm -D "$i")
 		if [ -n "$mdadm" ]
 		then
-			mnt=$(timeout 3 df -PB1 | grep "$i" | awk '{print $(NF)}')
+			mnt=$(timeout 3 df -PB1 | grep "$i " | awk '{print $(NF)}')
 			RAID="$RAID$mnt,$i,$mdadm;"
 		fi
 	done

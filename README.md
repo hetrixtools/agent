@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.0.9: 
+- Fixed a bug where in some cases RAID would not be detected properly.
+
 Version 2.0.8: 
 - Added support for Custom Variables: https://docs.hetrixtools.com/server-agent-custom-variables/ 
 - Fixed `needs-restarting` for CloudLinux 8 https://github.com/hetrixtools/agent/commit/7e87b191bab90f682d2f55cc0f2650b5f4f7e0c7 (thanks to @JLHC)
