@@ -479,7 +479,7 @@ do
 	NICS="$NICS$NIC,$RX,$TX;"
 	# Individual NIC IP addresses
 	IPv4="$IPv4$NIC,$(ip -4 addr show "$NIC" | grep -oP 'inet \K[\d.]+' | xargs | sed 's/ /,/g')"
-	IPv6="$IPv6$NIC,$(ip -6 addr show "$NIC" | grep -oP 'inet6 \K[0-9a-fA-F:]+' | xargs | sed 's/ /,/g')"
+	IPv6="$IPv6$NIC,$(ip -6 addr show "ens3" | grep -oP 'inet6 .* scope global' | awk '{print $2}' | xargs | sed 's/ /,/g')"
 done
 NICS=$(echo -ne "$NICS" | base64 | xargs | sed 's/ //g')
 IPv4=$(echo -ne "$IPv4" | base64 | xargs | sed 's/ //g')
