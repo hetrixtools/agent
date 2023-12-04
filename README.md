@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.0.10: 
+- Fixed `division by zero` error for servers without swap.
+- Replace `ifconfig` with `ip` command for IP address extraction. (thanks to @Ry3nlNaToR)
+
 Version 2.0.9: 
 - Fixed a bug where in some cases RAID would not be detected properly.
 
