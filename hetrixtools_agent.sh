@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.9"
+Version="2.0.10"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -205,7 +205,12 @@ do
 	# RAM swap usage
 	aRAMSwap=$(echo "$VMSTAT" | awk '{print $3}')
 	cRAM=$(echo "$zRAM" | grep "^SwapTotal:" /proc/meminfo | awk '{print $2}')
-	RAMSwap=$(echo | awk "{print $aRAMSwap * 100 / $cRAM}")
+	if [ "$cRAM" -gt 0 ]
+	then
+		RAMSwap=$(echo | awk "{print $aRAMSwap * 100 / $cRAM}")
+	else
+		RAMSwap=0
+	fi
 	tRAMSwap=$(echo | awk "{print $tRAMSwap + $RAMSwap}")
 	
 	# RAM buffers usage
