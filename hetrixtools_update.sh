@@ -30,7 +30,7 @@ CONFIG="/etc/hetrixtools/hetrixtools.cfg"
 # Check if user specified branch to update to
 if [ -z "$1" ]
 then
-	BRANCH="2.0.x"
+	BRANCH="master"
 else
 	BRANCH=$1
 fi
