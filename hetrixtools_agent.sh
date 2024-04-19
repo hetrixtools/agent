@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.10"
+Version="2.0.11"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -133,6 +133,17 @@ fi
 # Temperature
 declare -A TempArray
 declare -A TempArrayCnt
+
+# Check Services
+if [ -n "$CheckServices" ]
+then
+	declare -A SRVCSR
+	IFS=',' read -r -a CheckServicesArray <<< "$CheckServices"
+	for i in "${CheckServicesArray[@]}"
+	do
+		SRVCSR[$i]=$(( ${SRVCSR[$i]} + $(servicestatus "$i") ))
+	done
+fi
 
 # Disks IOPS
 declare -A vDISKs
@@ -324,7 +335,7 @@ do
 	then
 		MM=0
 	fi
-	if [ "$MM" -gt "$M" ] 
+	if [ "$MM" -ne "$M" ] 
 	then
 		break
 	fi
@@ -516,14 +527,19 @@ then
 fi
 TEMP=$(echo -ne "$TEMP" | base64 | xargs | sed 's/ //g')
 
-# Check Services (if any are set to be checked)
+# Check Services
 SRVCS=""
 if [ -n "$CheckServices" ]
 then
-	IFS=',' read -r -a CheckServicesArray <<< "$CheckServices"
 	for i in "${CheckServicesArray[@]}"
 	do
-		SRVCS="$SRVCS$(servicestatus "$i");"
+		SRVCSR[$i]=$(( ${SRVCSR[$i]} + $(servicestatus "$i") ))
+		if [ "${SRVCSR[$i]}" -eq "0" ]
+		then
+			SRVCS="$SRVCS$i,0;"
+		else
+			SRVCS="$SRVCS$i,1;"
+		fi
 	done
 fi
 SRVCS=$(echo -ne "$SRVCS" | base64 | xargs | sed 's/ //g')

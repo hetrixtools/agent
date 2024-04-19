@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.0.11:
+- Improved service monitoring
+- Fixed an issue where the metrics collection loop wouldn't break properly
+
 Version 2.0.10: 
 - Fixed `division by zero` error for servers without swap.
 - Replace `ifconfig` with `ip` command for IP address extraction. (thanks to @Ry3nlNaToR)
