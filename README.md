@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.0.12:
+- Fixed an issue with the new service monitoring method introduced in version 2.0.11
+
 Version 2.0.11:
 - Improved service monitoring
 - Fixed an issue where the metrics collection loop wouldn't break properly

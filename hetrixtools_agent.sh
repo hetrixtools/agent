@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.11"
+Version="2.0.12"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -39,18 +39,18 @@ function servicestatus() {
 	# Check first via ps
 	if (( $(ps -ef | grep -E "[\/ ]$1([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
 	then # Up
-		echo "$1,1"
+		echo "1"
 	else # Down, try with systemctl (if available)
 		if command -v "systemctl" > /dev/null 2>&1
 		then # Use systemctl
 			if systemctl is-active --quiet "$1"
 			then # Up
-				echo "$1,1"
+				echo "1"
 			else # Down
-				echo "$1,0"
+				echo "0"
 			fi
 		else # No systemctl
-			echo "$1,0"
+			echo "0"
 		fi
 	fi
 }
