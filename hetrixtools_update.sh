@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	Copyright 2015 - 2023 @  HetrixTools
+#	Copyright 2015 - 2024 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -98,6 +98,8 @@ then
 	CustomVars=$(grep 'CustomVars="' $EXTRACT | awk -F'"' '{ print $2 }')
 	# Secured Connection
 	SecuredConnection=$(grep 'SecuredConnection=' $EXTRACT | awk -F'=' '{ print $2 }')
+	# CollectEveryXSeconds
+	CollectEveryXSeconds=$(grep 'CollectEveryXSeconds=' $EXTRACT | awk -F'=' '{ print $2 }')
 fi
 
 # Fetching the new agent
@@ -185,6 +187,14 @@ then
     sed -i "s/SecuredConnection=1/SecuredConnection=$SecuredConnection/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
+
+# Check CollectEveryXSeconds
+echo "Checking CollectEveryXSeconds..."
+if [ ! -z "$CollectEveryXSeconds" ]
+then
+	echo "Inserting CollectEveryXSeconds in the agent config..."
+	sed -i "s/CollectEveryXSeconds=3/CollectEveryXSeconds=$CollectEveryXSeconds/" /etc/hetrixtools/hetrixtools.cfg
+fi
 
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."

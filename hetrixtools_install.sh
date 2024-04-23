@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Install Script
-#	Copyright 2015 - 2023 @  HetrixTools
+#	Copyright 2015 - 2024 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -22,7 +22,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Branch
-BRANCH="master"
+BRANCH="2.1.x"
 
 # Check if install script is run by root
 echo "Checking root privileges..."

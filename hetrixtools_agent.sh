@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	Copyright 2015 - 2023 @  HetrixTools
+#	Copyright 2015 - 2024 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.0.12"
+Version="2.1.0"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -160,11 +160,14 @@ do
 	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
 done
 
+# Calculate how many how many data sample loops
+RunTimes=$(echo | awk "{print 60 / $CollectEveryXSeconds}")
+
 # Collect data loop
-for X in $(seq 20)
+for X in $(seq $RunTimes)
 do
 	# Get vmstat
-	VMSTAT=$(vmstat 3 2 | tail -1)
+	VMSTAT=$(vmstat $CollectEveryXSeconds 2 | tail -1)
 	
 	# CPU usage
 	CPU=$(echo "$VMSTAT" | awk '{print 100 - $15}')
@@ -546,19 +549,38 @@ SRVCS=$(echo -ne "$SRVCS" | base64 | xargs | sed 's/ //g')
 
 # Check Software RAID
 RAID=""
+ZP=""
+dfPB1=$(timeout 3 df -PB1 2>/dev/null)
 if [ "$CheckSoftRAID" -gt 0 ]
 then
-	for i in $(timeout 3 df -PB1 | awk '$1 ~ /\// {print}' | awk '{print $1}')
+	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
 	do
 		mdadm=$(mdadm -D "$i")
 		if [ -n "$mdadm" ]
 		then
-			mnt=$(timeout 3 df -PB1 | grep "$i " | awk '{print $(NF)}')
+			mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
 			RAID="$RAID$mnt,$i,$mdadm;"
 		fi
 	done
+	if [ -x "$(command -v zpool)" ]
+	then
+		zpoolsoverall=$(zpool status 2>/dev/null)
+		if ! grep -q "no pools available" <<< "$zpoolsoverall"
+		then
+			zpools=()
+			while IFS= read -r line; do zpools+=("$line"); done < <(echo -ne "$zpoolsoverall"  2>/dev/null | grep "pool: " | awk '{print $2}')
+			for i in "${zpools[@]}"
+			do
+				zpoolstatus=$(zpool status "$i" 2>/dev/null)
+				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | xargs | sed 's/ //g')
+				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+				ZP="$ZP$mnt,$i,$zpoolstatus;"
+			done
+		fi
+	fi
 fi
 RAID=$(echo -ne "$RAID" | base64 | xargs | sed 's/ //g')
+ZP=$(echo -ne "$ZP" | base64 | xargs | sed 's/ //g')
 
 # Check Drive Health
 DH=""
@@ -662,7 +684,7 @@ fi
 Time=$(date +%Y-%m-%d\ %T\ %Z | base64 | xargs | sed 's/ //g')
 
 # Prepare data
-json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'","os":"'"$OS"'","kernel":"'"$Kernel"'","hostname":"'"$Hostname"'","time":"'"$Time"'","reqreboot":"'"$RequiresReboot"'","uptime":"'"$Uptime"'","cpumodel":"'"$CPUModel"'","cpusockets":"'"$CPUSockets"'","cpucores":"'"$CPUCores"'","cputhreads":"'"$CPUThreads"'","cpuspeed":"'"$CPUSpeed"'","cpu":"'"$CPU"'","wa":"'"$CPUwa"'","st":"'"$CPUst"'","us":"'"$CPUus"'","sy":"'"$CPUsy"'","load1":"'"$loadavg1"'","load5":"'"$loadavg5"'","load15":"'"$loadavg15"'","ramsize":"'"$RAMSize"'","ram":"'"$RAM"'","ramswapsize":"'"$RAMSwapSize"'","ramswap":"'"$RAMSwap"'","rambuff":"'"$RAMBuff"'","ramcache":"'"$RAMCache"'","disks":"'"$DISKs"'","inodes":"'"$INODEs"'","iops":"'"$IOPS"'","raid":"'"$RAID"'","dh":"'"$DH"'","nics":"'"$NICS"'","ipv4":"'"$IPv4"'","ipv6":"'"$IPv6"'","conn":"'"$CONN"'","temp":"'"$TEMP"'","serv":"'"$SRVCS"'","cust":"'"$CV"'","rps1":"'"$RPS1"'","rps2":"'"$RPS2"'"}'
+json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'","os":"'"$OS"'","kernel":"'"$Kernel"'","hostname":"'"$Hostname"'","time":"'"$Time"'","reqreboot":"'"$RequiresReboot"'","uptime":"'"$Uptime"'","cpumodel":"'"$CPUModel"'","cpusockets":"'"$CPUSockets"'","cpucores":"'"$CPUCores"'","cputhreads":"'"$CPUThreads"'","cpuspeed":"'"$CPUSpeed"'","cpu":"'"$CPU"'","wa":"'"$CPUwa"'","st":"'"$CPUst"'","us":"'"$CPUus"'","sy":"'"$CPUsy"'","load1":"'"$loadavg1"'","load5":"'"$loadavg5"'","load15":"'"$loadavg15"'","ramsize":"'"$RAMSize"'","ram":"'"$RAM"'","ramswapsize":"'"$RAMSwapSize"'","ramswap":"'"$RAMSwap"'","rambuff":"'"$RAMBuff"'","ramcache":"'"$RAMCache"'","disks":"'"$DISKs"'","inodes":"'"$INODEs"'","iops":"'"$IOPS"'","raid":"'"$RAID"'","zp":"'"$ZP"'","dh":"'"$DH"'","nics":"'"$NICS"'","ipv4":"'"$IPv4"'","ipv6":"'"$IPv6"'","conn":"'"$CONN"'","temp":"'"$TEMP"'","serv":"'"$SRVCS"'","cust":"'"$CV"'","rps1":"'"$RPS1"'","rps2":"'"$RPS2"'"}'
 
 # Compress payload
 jsoncomp=$(echo -ne "$json" | gzip -cf | base64 -w 0 | sed 's/ //g' | sed 's/\//%2F/g' | sed 's/+/%2B/g')
