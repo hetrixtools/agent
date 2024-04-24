@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.1.0:
+- Introducing ZFS pool health monitoring
+- Added `CollectEveryXSeconds` to agent config
+
 Version 2.0.12:
 - Fixed an issue with the new service monitoring method introduced in version 2.0.11
 
