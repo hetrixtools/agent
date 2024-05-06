@@ -22,7 +22,7 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Branch
-BRANCH="master"
+BRANCH="2.2.x"
 
 # Check if install script is run by root
 echo "Checking root privileges..."
