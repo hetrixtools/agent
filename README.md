@@ -7,6 +7,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 Version 2.2.1:
 - Fixed an issue where, in some cases, the agent would query `mdadm` for devices not using `mdadm`
+- Changed `LC_NUMERIC` locale
 
 Version 2.2.0:
 - Introducing DEBUG mode
