@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.1"
+Version="2.2.2"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -94,21 +94,21 @@ then
 	HTProcesses=0
 fi
 # DEBUG
-if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Found $HTProcesses agent processes" >> "$ScriptPath"/debug.log; fi
-if [ "$HTProcesses" -gt 15 ]
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Found $HTProcesses agent processes\n$(ps aux | grep 'hetrixtools_agent.sh')" >> "$ScriptPath"/debug.log; fi
+if [ "$HTProcesses" -ge 50 ]
 then
-	pgrep -f hetrixtools_agent.sh | xargs kill -9
 	# DEBUG
-	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killed $HTProcesses lingering agent processes" >> "$ScriptPath"/debug.log; fi
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killing $HTProcesses lingering agent processes" >> "$ScriptPath"/debug.log; fi
+	pgrep -f hetrixtools_agent.sh | xargs kill -9
 fi
 for PID in $(pgrep -f hetrixtools_agent.sh)
 do
 	PID_TIME=$(ps -p "$PID" -oetime= | tr '-' ':' | awk -F: '{total=0; m=1;} {for (i=0; i < NF; i++) {total += $(NF-i)*m; m *= i >= 2 ? 24 : 60 }} {print total}')
-	if [ -n "$PID_TIME" ] && [ "$PID_TIME" -ge 120 ]
+	if [ -n "$PID_TIME" ] && [ "$PID_TIME" -ge 90 ]
 	then
-		kill -9 "$PID"
 		# DEBUG
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killed PID $PID, running for $PID_TIME seconds" >> "$ScriptPath"/debug.log; fi
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killing PID $PID, running for $PID_TIME seconds" >> "$ScriptPath"/debug.log; fi
+		kill -9 "$PID"
 	fi
 done
 

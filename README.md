@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.2:
+- Improved DEBUG mode
+- Fixed an issue where agent would kill its own processes too eagerly, causing data sending issues
+
 Version 2.2.1:
 - Fixed an issue where, in some cases, the agent would query `mdadm` for devices not using `mdadm`
 - Changed `LC_NUMERIC` locale
