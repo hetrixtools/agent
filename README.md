@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.3:
+- Fixed an issue where SMART test was not properly performed on NVMe disks
+- Improved DEBUG mode
+
 Version 2.2.2:
 - Improved DEBUG mode
 - Fixed an issue where agent would kill its own processes too eagerly, causing data sending issues

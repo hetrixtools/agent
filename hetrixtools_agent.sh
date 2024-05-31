@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.2"
+Version="2.2.3"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -680,6 +680,8 @@ then
 		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
 		do
 			DHealth=$(smartctl -A "$i")
+			# DEBUG
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
 			if grep -q 'Attribute' <<< "$DHealth"
 			then
 				DHealth=$(smartctl -H "$i")"\n$DHealth"
@@ -727,7 +729,8 @@ then
 			then
 				if [ -x "$(command -v smartctl)" ]
 				then
-					DHealth=$(smartctl -H /dev/"${i%??}")"\n$DHealth"
+					ii=${i##*/}
+					DHealth=$(smartctl -H /dev/"${ii%??}")"\n$DHealth"
 				fi
 				DHealth=$(echo -ne "$DHealth" | base64 | xargs | sed 's/ //g')
 				DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' '{print $3}')"
