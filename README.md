@@ -5,6 +5,13 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.4:
+- `CPUModel` should now pick up more CPU model names
+- Fixed an issue where `CPUCores` and `CPUThreads` would not handle multi-line data properly
+- Changed how the agent handles killing of its own old/frozen processes, if any are found
+- Increased DEBUG mode clearing time
+- Improved DEBUG mode
+
 Version 2.2.3:
 - Fixed an issue where SMART test was not properly performed on NVMe disks
 - Improved DEBUG mode
