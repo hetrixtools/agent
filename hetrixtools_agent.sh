@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.4"
+Version="2.2.5"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -432,13 +432,13 @@ then
 else
 	OS="$(uname -s)"
 fi
-OS=$(echo -ne "$OS" | base64 | xargs | sed 's/ //g')
+OS=$(echo -ne "$OS" | base64 | tr -d '\n\r\t ')
 
 # Kernel
-Kernel=$(uname -r | base64 | xargs | sed 's/ //g')
+Kernel=$(uname -r | base64 | tr -d '\n\r\t ')
 
 # Hostname
-Hostname=$(uname -n | base64 | xargs | sed 's/ //g')
+Hostname=$(uname -n | base64 | tr -d '\n\r\t ')
 
 # Server uptime
 Uptime=$(awk '{print $1}' < /proc/uptime | awk '{printf "%18.0f",$1}' | xargs)
@@ -454,7 +454,7 @@ if [ -z "$CPUModel" ]
 then
 	CPUModel=$(echo "$lscpu" | grep "^Model name:" | awk -F": " '{print $NF}' | xargs)
 fi
-CPUModel=$(echo -ne "$CPUModel" | base64 | xargs | sed 's/ //g')
+CPUModel=$(echo -ne "$CPUModel" | base64 | tr -d '\n\r\t ')
 
 # CPU sockets
 CPUSockets=$(grep -i "physical id" /proc/cpuinfo | sort -u | wc -l)
@@ -520,11 +520,8 @@ RAMCache=$(echo | awk "{print $tRAMCache / $X}")
 
 debug "RAM Size: $RAMSize Usage: $RAM Swap Size: $RAMSwapSize Usage: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache"
 
-# Disks usage
-DISKs=$(echo -ne "$(timeout 3 df -TPB1 | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')" | xargs | sed 's/ //g' | base64 | xargs | sed 's/ //g')
-
 # Disks inodes
-INODEs=$(echo -ne "$(timeout 3 df -Ti | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | xargs | sed 's/ //g' | base64 | xargs | sed 's/ //g')
+INODEs=$(echo -ne "$(timeout 3 df -Ti | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
 
 # Disks IOPS
 IOPS=""
@@ -537,9 +534,9 @@ do
 	IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
 	IOPS="$IOPS$i,${IOPSRead[$i]},${IOPSWrite[$i]};"
 done
-IOPS=$(echo -ne "$IOPS" | base64 | xargs | sed 's/ //g')
+IOPS=$(echo -ne "$IOPS" | base64 | tr -d '\n\r\t ')
 
-debug "lsblk: $(lsblk -lp | base64 | xargs | sed 's/ //g') Disks: $DISKs Inodes: $INODEs IOPS: $IOPS"
+debug "lsblk: $(lsblk -lp | base64 | tr -d '\n\r\t ') Disks: $DISKs Inodes: $INODEs IOPS: $IOPS"
 
 # Total network usage and IP addresses
 RX=0
@@ -559,9 +556,9 @@ do
 	IPv4="$IPv4$NIC,$(ip -4 addr show "$NIC" | grep -oP 'inet \K[\d.]+' | xargs | sed 's/ /,/g');"
 	IPv6="$IPv6$NIC,$(ip -6 addr show "$NIC" | grep -w "global" | grep -oP 'inet6 \K[0-9a-fA-F:]+' | xargs | sed 's/ /,/g');"
 done
-NICS=$(echo -ne "$NICS" | base64 | xargs | sed 's/ //g')
-IPv4=$(echo -ne "$IPv4" | base64 | xargs | sed 's/ //g')
-IPv6=$(echo -ne "$IPv6" | base64 | xargs | sed 's/ //g')
+NICS=$(echo -ne "$NICS" | base64 | tr -d '\n\r\t ')
+IPv4=$(echo -ne "$IPv4" | base64 | tr -d '\n\r\t ')
+IPv6=$(echo -ne "$IPv6" | base64 | tr -d '\n\r\t ')
 
 debug "Network Interfaces: $NICS IPv4: $IPv4 IPv6: $IPv6"
 
@@ -576,7 +573,7 @@ then
 		CONN="$CONN$cPort,$CON;"
 	done
 fi
-CONN=$(echo -ne "$CONN" | base64 | xargs | sed 's/ //g')
+CONN=$(echo -ne "$CONN" | base64 | tr -d '\n\r\t ')
 
 debug "Port Connections: $CONN"
 
@@ -591,7 +588,7 @@ then
 		TEMP="$TEMP$TempName,$TMP;"
 	done
 fi
-TEMP=$(echo -ne "$TEMP" | base64 | xargs | sed 's/ //g')
+TEMP=$(echo -ne "$TEMP" | base64 | tr -d '\n\r\t ')
 
 debug "Temperature: $TEMP"
 
@@ -610,7 +607,7 @@ then
 		fi
 	done
 fi
-SRVCS=$(echo -ne "$SRVCS" | base64 | xargs | sed 's/ //g')
+SRVCS=$(echo -ne "$SRVCS" | base64 | tr -d '\n\r\t ')
 
 debug "Services: $SRVCS"
 
@@ -619,6 +616,7 @@ RAID=""
 ZP=""
 dfPB1=$(timeout 3 df -PB1 2>/dev/null)
 mdstat=$(cat /proc/mdstat 2>/dev/null)
+declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
 then
 	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
@@ -646,17 +644,34 @@ then
 			for i in "${zpools[@]}"
 			do
 				zpoolstatus=$(zpool status "$i" 2>/dev/null)
-				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | xargs | sed 's/ //g')
+				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | tr -d '\n\r\t ')
 				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
 				ZP="$ZP$mnt,$i,$zpoolstatus;"
+				zpooldiskusage[$mnt]=$(zpool list -Ho size,allocated,free -p "$i" | xargs)
 			done
 		fi
 	fi
 fi
-RAID=$(echo -ne "$RAID" | base64 | xargs | sed 's/ //g')
-ZP=$(echo -ne "$ZP" | base64 | xargs | sed 's/ //g')
+RAID=$(echo -ne "$RAID" | base64 | tr -d '\n\r\t ')
+ZP=$(echo -ne "$ZP" | base64 | tr -d '\n\r\t ')
 
 debug "RAID: $RAID ZP: $ZP"
+
+# Disks usage
+DISKs=""
+IFS=$'\n' read -d '' -r -a DISKsArray < <(timeout 3 df -TPB1 | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')
+for i in "${DISKsArray[@]}"; do
+    IFS=',' read -r mount_point filesystem_type total_size used_size available_size <<< "$i"
+	if [[ -v zpooldiskusage["$mount_point"] ]]
+	then
+		IFS=' ' read -r zpool_total zpool_allocated zpool_free <<< "${zpooldiskusage["$mount_point"]}"
+		total_size=$zpool_total
+		used_size=$zpool_allocated
+		available_size=$zpool_free
+	fi
+	DISKs="$DISKs$mount_point,$filesystem_type,$total_size,$used_size,$available_size;"
+done
+DISKs=$(echo -ne "$DISKs" | base64 | tr -d '\n\r\t ')
 
 # Check Drive Health
 DH=""
@@ -671,7 +686,7 @@ then
 			if grep -q 'Attribute' <<< "$DHealth"
 			then
 				DHealth=$(smartctl -H "$i")"\n$DHealth"
-				DHealth=$(echo -ne "$DHealth" | base64 | xargs | sed 's/ //g')
+				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
 				DInfo="$(smartctl -i "$i")"
 				DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
 				DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
@@ -690,7 +705,7 @@ then
 						then
 							MegaRaidN=$((MegaRaidN + 1))
 							DHealth=$(smartctl -H -d "$MegaRaidID" "$i")"\n$DHealth"
-							DHealth=$(echo -ne "$DHealth" | base64 | xargs | sed 's/ //g')
+							DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
 							DInfo="$(smartctl -i -d "$MegaRaidID" "$i")"
 							DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
 							DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
@@ -717,7 +732,7 @@ then
 					ii=${i##*/}
 					DHealth=$(smartctl -H /dev/"${ii%??}")"\n$DHealth"
 				fi
-				DHealth=$(echo -ne "$DHealth" | base64 | xargs | sed 's/ //g')
+				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
 				DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' '{print $3}')"
 				DSerial="$(echo "$NVMeList" | grep "$i" | awk '{print $2}')"
 				i=${i##*/}
@@ -726,7 +741,7 @@ then
 		done
 	fi
 fi
-DH=$(echo -ne "$DH" | base64 | xargs | sed 's/ //g')
+DH=$(echo -ne "$DH" | base64 | tr -d '\n\r\t ')
 
 debug "DH: $DH"
 
@@ -736,7 +751,7 @@ if [ -n "$CustomVars" ]
 then
 	if [ -s "$ScriptPath"/"$CustomVars" ]
 	then
-		CV=$(< "$ScriptPath"/"$CustomVars" base64 | xargs | sed 's/ //g')
+		CV=$(< "$ScriptPath"/"$CustomVars" base64 | tr -d '\n\r\t ')
 	fi
 fi
 
@@ -765,7 +780,7 @@ else
 fi
 
 # Current time/date
-Time=$(date +%Y-%m-%d\ %T\ %Z | base64 | xargs | sed 's/ //g')
+Time=$(date +%Y-%m-%d\ %T\ %Z | base64 | tr -d '\n\r\t ')
 
 # Prepare data
 json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'","os":"'"$OS"'","kernel":"'"$Kernel"'","hostname":"'"$Hostname"'","time":"'"$Time"'","reqreboot":"'"$RequiresReboot"'","uptime":"'"$Uptime"'","cpumodel":"'"$CPUModel"'","cpusockets":"'"$CPUSockets"'","cpucores":"'"$CPUCores"'","cputhreads":"'"$CPUThreads"'","cpuspeed":"'"$CPUSpeed"'","cpu":"'"$CPU"'","wa":"'"$CPUwa"'","st":"'"$CPUst"'","us":"'"$CPUus"'","sy":"'"$CPUsy"'","load1":"'"$loadavg1"'","load5":"'"$loadavg5"'","load15":"'"$loadavg15"'","ramsize":"'"$RAMSize"'","ram":"'"$RAM"'","ramswapsize":"'"$RAMSwapSize"'","ramswap":"'"$RAMSwap"'","rambuff":"'"$RAMBuff"'","ramcache":"'"$RAMCache"'","disks":"'"$DISKs"'","inodes":"'"$INODEs"'","iops":"'"$IOPS"'","raid":"'"$RAID"'","zp":"'"$ZP"'","dh":"'"$DH"'","nics":"'"$NICS"'","ipv4":"'"$IPv4"'","ipv6":"'"$IPv6"'","conn":"'"$CONN"'","temp":"'"$TEMP"'","serv":"'"$SRVCS"'","cust":"'"$CV"'","rps1":"'"$RPS1"'","rps2":"'"$RPS2"'"}'
