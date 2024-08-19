@@ -647,7 +647,7 @@ then
 				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | tr -d '\n\r\t ')
 				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
 				ZP="$ZP$mnt,$i,$zpoolstatus;"
-				zpooldiskusage[$mnt]=$(zpool list -Ho size,allocated,free -p "$i" | xargs)
+				zpooldiskusage[$mnt]=$(zfs get -H -o value -p used,avail rpool | xargs | awk '{printf "%.0f %.0f %.0f", $1+$2, $1, $2}')
 			done
 		fi
 	fi
