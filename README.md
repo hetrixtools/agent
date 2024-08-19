@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.5:
+- `zpool` now records disk usage even for unmounted pools
+- fixed some rare cases where base64 would break on multiple lines
+
 Version 2.2.4:
 - `CPUModel` should now pick up more CPU model names
 - Fixed an issue where `CPUCores` and `CPUThreads` would not handle multi-line data properly
