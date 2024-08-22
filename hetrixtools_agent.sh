@@ -614,6 +614,7 @@ then
 	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
 	do
 		ii=${i##*/}
+		iii=${ii:0:3}
 		if grep -q "$ii " <<< "$mdstat"
 		then
 			mdadm=$(mdadm -D "$i")
@@ -622,6 +623,15 @@ then
 			then
 				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
 				RAID="$RAID$mnt,$i,$mdadm;"
+			fi
+		elif grep -q "$iii " <<< "$mdstat"
+		then
+			mdadm=$(mdadm -D "/dev/$iii")
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D /dev/$iii:\n$mdadm" >> "$ScriptPath"/debug.log; fi
+			if [ -n "$mdadm" ]
+			then
+				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+				RAID="$RAID$mnt,/dev/$iii,$mdadm;"
 			fi
 		fi
 	done
@@ -664,6 +674,8 @@ for i in "${DISKsArray[@]}"; do
 	DISKs="$DISKs$mount_point,$filesystem_type,$total_size,$used_size,$available_size;"
 done
 DISKs=$(echo -ne "$DISKs" | base64 | tr -d '\n\r\t ')
+
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DISKs: $DISKs" >> "$ScriptPath"/debug.log; fi
 
 # Check Drive Health
 DH=""
