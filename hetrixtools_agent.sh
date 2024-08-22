@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.5"
+Version="2.2.6"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -66,19 +66,11 @@ function base64prep() {
 	echo "$str"
 }
 
-# Debug function
-function debug() {
-	if [ "$DEBUG" -eq 1 ]
-	then
-		echo -e "$ScriptStartTime-$(date +%T]) $1" >> "$ScriptPath"/debug.log
-	fi
-}
-
 # Clear debug.log every day at midnight
 if [ -z "$(date +%H | sed 's/^0*//')" ] && [ -z "$(date +%M | sed 's/^0*//')" ] && [ -f "$ScriptPath"/debug.log ]
 then
 	rm -f "$ScriptPath"/debug.log
-	debug "Cleared debug.log"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Cleared debug.log" >> "$ScriptPath"/debug.log; fi
 fi
 
 # Start timers
@@ -96,11 +88,11 @@ then
 	if [ -f "$ScriptPath"/hetrixtools_cron.log ]
 	then
 		rm -f "$ScriptPath"/hetrixtools_cron.log
-		debug "Cleared hetrixtools_cron.log"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Cleared hetrixtools_cron.log" >> "$ScriptPath"/debug.log; fi
 	fi
 fi
 
-debug "Starting HetrixTools Agent v$Version"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Starting HetrixTools Agent v$Version" >> "$ScriptPath"/debug.log; fi
 
 # Kill any lingering agent processes
 HTProcesses=$(pgrep -f hetrixtools_agent.sh | wc -l)
@@ -108,11 +100,11 @@ if [ -z "$HTProcesses" ]
 then
 	HTProcesses=0
 fi
-debug "Found $HTProcesses agent processes\n$(ps aux | grep 'hetrixtools_agent.sh')"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Found $HTProcesses agent processes\n$(ps aux | grep 'hetrixtools_agent.sh')" >> "$ScriptPath"/debug.log; fi
 
 if [ "$HTProcesses" -ge 50 ]
 then
-	debug "Killing $HTProcesses lingering agent processes"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killing $HTProcesses lingering agent processes" >> "$ScriptPath"/debug.log; fi
 	pgrep -f hetrixtools_agent.sh | xargs kill -9
 fi
 if [ "$HTProcesses" -ge 10 ]
@@ -122,7 +114,7 @@ then
 		PID_TIME=$(ps -p "$PID" -oetime= | tr '-' ':' | awk -F: '{total=0; m=1;} {for (i=0; i < NF; i++) {total += $(NF-i)*m; m *= i >= 2 ? 24 : 60 }} {print total}')
 		if [ -n "$PID_TIME" ] && [ "$PID_TIME" -ge 90 ]
 		then
-			debug "Killing PID $PID, running for $PID_TIME seconds"
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killing PID $PID, running for $PID_TIME seconds" >> "$ScriptPath"/debug.log; fi
 			kill -9 "$PID"
 		fi
 	done
@@ -138,7 +130,7 @@ else
 	NetworkInterfacesArray=()
 	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
 fi
-debug "Network Interfaces: ${NetworkInterfacesArray[*]}"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interfaces: ${NetworkInterfacesArray[*]}" >> "$ScriptPath"/debug.log; fi
 
 # Initial network usage
 T=$(cat /proc/net/dev)
@@ -152,7 +144,7 @@ for NIC in "${NetworkInterfacesArray[@]}"
 do
 	aRX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $2}')
 	aTX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $10}')
-	debug "Network Interface $NIC RX: ${aRX[$NIC]} TX: ${aTX[$NIC]}"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interface $NIC RX: ${aRX[$NIC]} TX: ${aTX[$NIC]}" >> "$ScriptPath"/debug.log; fi
 done
 
 # Port connections
@@ -164,7 +156,7 @@ then
 	for cPort in "${ConnectionPortsArray[@]}"
 	do
 		Connections[$cPort]=$(echo "$netstat" | grep -c ":$cPort$")
-		debug "Port $cPort Connections: ${Connections[$cPort]}"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Port $cPort Connections: ${Connections[$cPort]}" >> "$ScriptPath"/debug.log; fi
 	done
 fi
 
@@ -180,7 +172,7 @@ then
 	for i in "${CheckServicesArray[@]}"
 	do
 		SRVCSR[$i]=$(( ${SRVCSR[$i]} + $(servicestatus "$i") ))
-		debug "Service $i status: ${SRVCSR[$i]}"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Service $i status: ${SRVCSR[$i]}" >> "$ScriptPath"/debug.log; fi
 	done
 fi
 
@@ -189,7 +181,7 @@ declare -A vDISKs
 for i in $(timeout 3 df | awk '$1 ~ /\// {print}' | awk '{print $(NF)}')
 do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
-	debug "Disk $i: ${vDISKs[$i]}"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
 done
 declare -A IOPSRead
 declare -A IOPSWrite
@@ -198,19 +190,19 @@ for i in "${!vDISKs[@]}"
 do
 	IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
 	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
-	debug "Disk $i IOPS Read: ${IOPSRead[$i]} Write: ${IOPSWrite[$i]}"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i IOPS Read: ${IOPSRead[$i]} Write: ${IOPSWrite[$i]}" >> "$ScriptPath"/debug.log; fi
 done
 
 # Calculate how many how many data sample loops
 RunTimes=$(echo | awk "{print 60 / $CollectEveryXSeconds}")
-debug "Collecting data for $RunTimes loops"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Collecting data for $RunTimes loops" >> "$ScriptPath"/debug.log; fi
 
 # Collect data loop
 for X in $(seq "$RunTimes")
 do
 	# Get vmstat
 	VMSTAT=$(vmstat "$CollectEveryXSeconds" 2 | tail -1)
-	debug "$VMSTAT"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) $VMSTAT" >> "$ScriptPath"/debug.log; fi
 	
 	# CPU usage
 	CPU=$(echo "$VMSTAT" | awk '{print 100 - $15}')
@@ -249,7 +241,7 @@ do
 	loadavg15=$(echo "$loadavg" | awk '{print $3}')
 	tloadavg15=$(echo | awk "{print $tloadavg15 + $loadavg15}")
 
-	debug "CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15" >> "$ScriptPath"/debug.log; fi
 	
 	# RAM usage
 	aRAM=$(echo "$VMSTAT" | awk '{print $4 + $5 + $6}')
@@ -279,7 +271,7 @@ do
 	RAMCache=$(echo | awk "{print $aRAMCache * 100 / $bRAM}")
 	tRAMCache=$(echo | awk "{print $tRAMCache + $RAMCache}")
 
-	debug "RAM: $RAM Swap: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAM: $RAM Swap: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache" >> "$ScriptPath"/debug.log; fi
 	
 	# Network usage
 	T=$(cat /proc/net/dev)
@@ -307,7 +299,7 @@ do
 		tTX[$NIC]=$(echo "${tTX[$NIC]}" | awk '{printf "%18.0f",$1}' | xargs)
 	done
 
-	debug "Network Traffic: ${tRX[*]} ${tTX[*]}"
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Traffic: ${tRX[*]} ${tTX[*]}" >> "$ScriptPath"/debug.log; fi
 	
 	# Port connections
 	if [ -n "$ConnectionPorts" ]
@@ -317,7 +309,7 @@ do
 		do
 			Connections[$cPort]=$(echo | awk "{print ${Connections[$cPort]} + $(echo "$netstat" | grep -c ":$cPort$")}")
 		done
-		debug "Port Connections: ${Connections[*]}"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Port Connections: ${Connections[*]}" >> "$ScriptPath"/debug.log; fi
 	fi
 
 	# Temperature
@@ -334,7 +326,7 @@ do
 				TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
 				TempNameCnt=$((TempNameCnt + 1))
 		done
-		debug "Temperature thermal_zone: ${TempArray[*]}"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 	else
 		if command -v "sensors" > /dev/null 2>&1
 		then
@@ -358,7 +350,7 @@ do
 					fi
 				fi
 			done
-			debug "Temperature sensors: ${TempArray[*]}"
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 		else
 			if command -v "ipmitool" > /dev/null 2>&1
 			then
@@ -377,7 +369,7 @@ do
 						fi
 					fi
 				done
-				debug "Temperature ipmitool: ${TempArray[*]}"
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 			fi
 		fi
 	fi
@@ -390,7 +382,7 @@ do
 	fi
 	if [ "$MM" -ne "$M" ] 
 	then
-		debug "Minute changed, ending loop"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Minute changed, ending loop" >> "$ScriptPath"/debug.log; fi
 		break
 	fi
 done
@@ -443,7 +435,7 @@ Hostname=$(uname -n | base64 | tr -d '\n\r\t ')
 # Server uptime
 Uptime=$(awk '{print $1}' < /proc/uptime | awk '{printf "%18.0f",$1}' | xargs)
 
-debug "User: $User OS: $OS Kernel: $Kernel Hostname: $Hostname Uptime: $Uptime"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) User: $User OS: $OS Kernel: $Kernel Hostname: $Hostname Uptime: $Uptime" >> "$ScriptPath"/debug.log; fi
 
 # lscpu
 lscpu=$(lscpu)
@@ -493,7 +485,7 @@ loadavg1=$(echo | awk "{print $tloadavg1 / $X}")
 loadavg5=$(echo | awk "{print $tloadavg5 / $X}")
 loadavg15=$(echo | awk "{print $tloadavg15 / $X}")
 
-debug "CPU Model: $CPUModel Sockets: $CPUSockets Cores: $CPUCores Threads: $CPUThreads Speed: $CPUSpeed CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) CPU Model: $CPUModel Sockets: $CPUSockets Cores: $CPUCores Threads: $CPUThreads Speed: $CPUSpeed CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15" >> "$ScriptPath"/debug.log; fi
 
 # RAM size
 RAMSize=$(grep ^MemTotal: /proc/meminfo | awk '{print $2}')
@@ -518,7 +510,7 @@ RAMBuff=$(echo | awk "{print $tRAMBuff / $X}")
 # RAM cache usage
 RAMCache=$(echo | awk "{print $tRAMCache / $X}")
 
-debug "RAM Size: $RAMSize Usage: $RAM Swap Size: $RAMSwapSize Usage: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAM Size: $RAMSize Usage: $RAM Swap Size: $RAMSwapSize Usage: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache" >> "$ScriptPath"/debug.log; fi
 
 # Disks inodes
 INODEs=$(echo -ne "$(timeout 3 df -Ti | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
@@ -536,7 +528,7 @@ do
 done
 IOPS=$(echo -ne "$IOPS" | base64 | tr -d '\n\r\t ')
 
-debug "lsblk: $(lsblk -lp | base64 | tr -d '\n\r\t ') Disks: $DISKs Inodes: $INODEs IOPS: $IOPS"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) lsblk: $(lsblk -l | base64 | tr -d '\n\r\t ') Disks: $DISKs Inodes: $INODEs IOPS: $IOPS" >> "$ScriptPath"/debug.log; fi
 
 # Total network usage and IP addresses
 RX=0
@@ -560,7 +552,7 @@ NICS=$(echo -ne "$NICS" | base64 | tr -d '\n\r\t ')
 IPv4=$(echo -ne "$IPv4" | base64 | tr -d '\n\r\t ')
 IPv6=$(echo -ne "$IPv6" | base64 | tr -d '\n\r\t ')
 
-debug "Network Interfaces: $NICS IPv4: $IPv4 IPv6: $IPv6"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interfaces: $NICS IPv4: $IPv4 IPv6: $IPv6" >> "$ScriptPath"/debug.log; fi
 
 # Port connections
 CONN=""
@@ -575,7 +567,7 @@ then
 fi
 CONN=$(echo -ne "$CONN" | base64 | tr -d '\n\r\t ')
 
-debug "Port Connections: $CONN"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Port Connections: $CONN" >> "$ScriptPath"/debug.log; fi
 
 # Temperature
 TEMP=""
@@ -590,7 +582,7 @@ then
 fi
 TEMP=$(echo -ne "$TEMP" | base64 | tr -d '\n\r\t ')
 
-debug "Temperature: $TEMP"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature: $TEMP" >> "$ScriptPath"/debug.log; fi
 
 # Check Services
 SRVCS=""
@@ -609,7 +601,7 @@ then
 fi
 SRVCS=$(echo -ne "$SRVCS" | base64 | tr -d '\n\r\t ')
 
-debug "Services: $SRVCS"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Services: $SRVCS" >> "$ScriptPath"/debug.log; fi
 
 # Check Software RAID
 RAID=""
@@ -625,7 +617,7 @@ then
 		if grep -q "$ii " <<< "$mdstat"
 		then
 			mdadm=$(mdadm -D "$i")
-			debug "mdadm -D $i:\n$mdadm"
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
 			if [ -n "$mdadm" ]
 			then
 				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
@@ -636,7 +628,7 @@ then
 	if [ -x "$(command -v zpool)" ]
 	then
 		zpoolsoverall=$(zpool status 2>/dev/null)
-		debug "zpool status:\n$zpoolsoverall"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool status:\n$zpoolsoverall" >> "$ScriptPath"/debug.log; fi
 		if ! grep -q "no pools available" <<< "$zpoolsoverall"
 		then
 			zpools=()
@@ -655,16 +647,16 @@ fi
 RAID=$(echo -ne "$RAID" | base64 | tr -d '\n\r\t ')
 ZP=$(echo -ne "$ZP" | base64 | tr -d '\n\r\t ')
 
-debug "RAID: $RAID ZP: $ZP"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAID: $RAID ZP: $ZP" >> "$ScriptPath"/debug.log; fi
 
 # Disks usage
 DISKs=""
 IFS=$'\n' read -d '' -r -a DISKsArray < <(timeout 3 df -TPB1 | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')
 for i in "${DISKsArray[@]}"; do
     IFS=',' read -r mount_point filesystem_type total_size used_size available_size <<< "$i"
-	if [[ -v zpooldiskusage["$mount_point"] ]]
+	if [ -n "${zpooldiskusage[$mount_point]}" ]
 	then
-		IFS=' ' read -r zpool_total zpool_allocated zpool_free <<< "${zpooldiskusage["$mount_point"]}"
+		IFS=' ' read -r zpool_total zpool_allocated zpool_free <<< "${zpooldiskusage[$mount_point]}"
 		total_size=$zpool_total
 		used_size=$zpool_allocated
 		available_size=$zpool_free
@@ -682,7 +674,7 @@ then
 		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
 		do
 			DHealth=$(smartctl -A "$i")
-			debug "smartctl -A $i:\n$DHealth"
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
 			if grep -q 'Attribute' <<< "$DHealth"
 			then
 				DHealth=$(smartctl -H "$i")"\n$DHealth"
@@ -721,7 +713,7 @@ then
 	if [ -x "$(command -v nvme)" ] #Using nvme-cli (for NVMe)
 	then
 		NVMeList="$(nvme list)"
-		debug "NVMe List:\n$NVMeList"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe List:\n$NVMeList" >> "$ScriptPath"/debug.log; fi
 		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
 		do
 			DHealth=$(nvme smart-log "$i")
@@ -743,7 +735,7 @@ then
 fi
 DH=$(echo -ne "$DH" | base64 | tr -d '\n\r\t ')
 
-debug "DH: $DH"
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DH: $DH" >> "$ScriptPath"/debug.log; fi
 
 # Custom Variables
 CV=""
