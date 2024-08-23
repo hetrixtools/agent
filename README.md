@@ -5,6 +5,11 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.6:
+- switched back to the old DEBUG mode method, as it was more efficient
+- fixed an incompatibility with older kernels introduced in `2.2.5`
+- fixed cases where Software RAID isn't picked up properly
+
 Version 2.2.5:
 - `zpool` now records disk usage even for unmounted pools
 - fixed some rare cases where base64 would break on multiple lines
