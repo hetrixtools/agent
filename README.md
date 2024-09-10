@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.7:
+- fixed an issue related to `mdadm` introduced in `2.2.1`
+
 Version 2.2.6:
 - switched back to the old DEBUG mode method, as it was more efficient
 - fixed an incompatibility with older kernels introduced in `2.2.5`

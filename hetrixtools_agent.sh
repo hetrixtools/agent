@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.6"
+Version="2.2.7"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -613,26 +613,13 @@ if [ "$CheckSoftRAID" -gt 0 ]
 then
 	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
 	do
-		ii=${i##*/}
-		iii=${ii:0:3}
-		if grep -q "$ii " <<< "$mdstat"
+		mdadm=$(mdadm -D "$i" 2>/dev/null)
+		# DEBUG
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
+		if [ -n "$mdadm" ]
 		then
-			mdadm=$(mdadm -D "$i")
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
-			if [ -n "$mdadm" ]
-			then
-				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
-				RAID="$RAID$mnt,$i,$mdadm;"
-			fi
-		elif grep -q "$iii " <<< "$mdstat"
-		then
-			mdadm=$(mdadm -D "/dev/$iii")
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D /dev/$iii:\n$mdadm" >> "$ScriptPath"/debug.log; fi
-			if [ -n "$mdadm" ]
-			then
-				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
-				RAID="$RAID$mnt,/dev/$iii,$mdadm;"
-			fi
+			mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+			RAID="$RAID$mnt,$i,$mdadm;"
 		fi
 	done
 	if [ -x "$(command -v zpool)" ]
