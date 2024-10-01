@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.7"
+Version="2.2.8"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -692,6 +692,7 @@ then
 					for MegaRaidID in "${MegaRaid[@]}"
 					do
 						DHealth=$(smartctl -A -d "$MegaRaidID" "$i")
+						if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A -d $MegaRaidID $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
 						if grep -q 'Attribute' <<< "$DHealth"
 						then
 							MegaRaidN=$((MegaRaidN + 1))
@@ -700,8 +701,8 @@ then
 							DInfo="$(smartctl -i -d "$MegaRaidID" "$i")"
 							DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
 							DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
-							i=${i##*/}
-							DH="$DH""1,${i}[$MegaRaidN],$DHealth,$DModel,$DSerial;"
+							ii=${i##*/}
+							DH="$DH""1,${ii}[$MegaRaidN],$DHealth,$DModel,$DSerial;"
 						fi
 					done
 					break

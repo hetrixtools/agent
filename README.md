@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.8:
+- fixed an issue with incorrect MegaRAID disk detection
+
 Version 2.2.7:
 - fixed an issue related to `mdadm` introduced in `2.2.1`
 
