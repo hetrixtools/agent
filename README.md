@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.2.9:
+- fixed an issue where, in some cases, NVMe disk Serial and Model were not detected properly
+
 Version 2.2.8:
 - fixed an issue with incorrect MegaRAID disk detection
 

@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.8"
+Version="2.2.9"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -725,8 +725,10 @@ then
 					DHealth=$(smartctl -H /dev/"${ii%??}")"\n$DHealth"
 				fi
 				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-				DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' '{print $3}')"
-				DSerial="$(echo "$NVMeList" | grep "$i" | awk '{print $2}')"
+				MODELCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "Model" | cut -d: -f1)
+				SNCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "SN" | cut -d: -f1)
+				DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$MODELCOL" '{print $col}')"
+				DSerial="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$SNCOL" '{print $col}')"
 				i=${i##*/}
 				DH="$DH""2,$i,$DHealth,$DModel,$DSerial;"
 			fi
