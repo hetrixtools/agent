@@ -339,7 +339,7 @@ do
 		for TempName in "${TempArrayIndex[@]}"
 		do
 			TempArray[$TempName]=${TempArray[$TempName]:-0}
-        	TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
+			TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
 
 			if [[ ${TempArrayVal[$TempNameCnt]} =~ ^[0-9]+$ ]]
 			then
