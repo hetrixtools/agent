@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.9"
+Version="2.3.0"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -65,6 +65,53 @@ function base64prep() {
 	str="${str//\//%2F}"
 	echo "$str"
 }
+
+# Function used to perform outgoing PING tests
+function pingstatus() {
+	local TargetName=$1
+	local PingTarget=$2
+	if ! [[ "$TargetName" =~ ^[a-zA-Z0-9\.\-_]+$ ]]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target name value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	if ! [[ "$PingTarget" =~ ^[a-zA-Z0-9\.\-:]+$ ]]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	if ! [[ "$OutgoingPingsCount" =~ ^[0-9]+$ ]] || (( OutgoingPingsCount < 10 || OutgoingPingsCount > 40 ))
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING count value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	PING_OUTPUT=$(ping "$PingTarget" -c "$OutgoingPingsCount" 2>/dev/null)
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T])PING_OUTPUT:\n$PING_OUTPUT" >> "$ScriptPath"/debug.log; fi
+	PACKET_LOSS=$(echo "$PING_OUTPUT" | grep -o '[0-9]\+% packet loss' | cut -d'%' -f1)
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T])PACKET_LOSS: $PACKET_LOSS" >> "$ScriptPath"/debug.log; fi
+	if [ -z "$PACKET_LOSS" ]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to extract packet loss" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	RTT_LINE=$(echo "$PING_OUTPUT" | grep 'rtt min/avg/max/mdev')
+    if [ -n "$RTT_LINE" ]
+	then
+        AVG_RTT=$(echo "$RTT_LINE" | awk -F'/' '{print $5}')
+		AVG_RTT=$(echo | awk "{print $AVG_RTT * 1000}" | awk '{printf "%18.0f",$1}' | xargs)
+    else
+        AVG_RTT="0"
+    fi
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T])AVG_RTT: $AVG_RTT" >> "$ScriptPath"/debug.log; fi
+	echo "$TargetName,$PingTarget,$PACKET_LOSS,$AVG_RTT;" >> "$ScriptPath"/ping.txt
+}
+
+# Check if the agent needs to run Outgoing PING tests
+if [ "$1" == "ping" ]
+then
+	$(pingstatus "$2" "$3")
+	exit 1
+fi
 
 # Clear debug.log every day at midnight
 if [ -z "$(date +%H | sed 's/^0*//')" ] && [ -z "$(date +%M | sed 's/^0*//')" ] && [ -f "$ScriptPath"/debug.log ]
@@ -120,6 +167,17 @@ then
 	done
 fi
 
+# Outgoing PING
+if [ -n "$OutgoingPings" ]
+then
+	IFS='|' read -r -a OutgoingPingsArray <<< "$OutgoingPings"
+	for i in "${OutgoingPingsArray[@]}"
+	do
+		IFS=',' read -r -a OutgoingPing <<< "$i"
+		bash "$ScriptPath"/hetrixtools_agent.sh ping "${OutgoingPing[0]}" "${OutgoingPing[1]}" & 
+	done
+fi
+
 # Network interfaces
 if [ -n "$NetworkInterfaces" ]
 then
@@ -163,6 +221,7 @@ fi
 # Temperature
 declare -A TempArray
 declare -A TempArrayCnt
+SensorsCmdDisable=0
 
 # Check Services
 if [ -n "$CheckServices" ]
@@ -328,29 +387,36 @@ do
 		done
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 	else
-		if command -v "sensors" > /dev/null 2>&1
+		if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
 		then
-			SensorsArray=()
-			while IFS='' read -r line; do SensorsArray+=("$line"); done < <(sensors -A)
-			for i in "${SensorsArray[@]}"
-			do
-				if [ -n "$i" ]
-				then
-					if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
+			SensorsCmd=$(sensors -A 2>/dev/null)
+			if [ $? -eq 0 ]
+			then
+				SensorsArray=()
+				while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
+				for i in "${SensorsArray[@]}"
+				do
+					if [ -n "$i" ]
 					then
-						SensorsCat="$i"
-					else
-						if [[ "$i" == *":"* ]] && [[ "$i" == *"°C"* ]]
+						if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
 						then
-							TempName="$SensorsCat|"$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $1}' | sed 's/ /_/g' | xargs)
-							TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
-							TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
-							TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+							SensorsCat="$i"
+						else
+							if [[ "$i" == *":"* ]] && [[ "$i" == *"°C"* ]]
+							then
+								TempName="$SensorsCat|"$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $1}' | sed 's/ /_/g' | xargs)
+								TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
+								TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
+								TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+							fi
 						fi
 					fi
-				fi
-			done
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+				done
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+			else
+				SensorsCmdDisable=1
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
+			fi
 		else
 			if command -v "ipmitool" > /dev/null 2>&1
 			then
@@ -749,6 +815,21 @@ then
 	fi
 fi
 
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) CV: $CV" >> "$ScriptPath"/debug.log; fi
+
+# Outgoing PING
+OPING=""
+if [ -n "$OutgoingPings" ]
+then
+	OPING=$(grep -v '^$' "$ScriptPath"/ping.txt | tr -d '\n' | base64 | tr -d '\n\r\t ')
+	if [ -f "$ScriptPath"/ping.txt ]
+	then
+		rm -f "$ScriptPath"/ping.txt
+	fi
+fi
+
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) OPING: $OPING" >> "$ScriptPath"/debug.log; fi
+
 # Running Processes
 RPS1=""
 RPS2=""
@@ -777,7 +858,7 @@ fi
 Time=$(date +%Y-%m-%d\ %T\ %Z | base64 | tr -d '\n\r\t ')
 
 # Prepare data
-json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'","os":"'"$OS"'","kernel":"'"$Kernel"'","hostname":"'"$Hostname"'","time":"'"$Time"'","reqreboot":"'"$RequiresReboot"'","uptime":"'"$Uptime"'","cpumodel":"'"$CPUModel"'","cpusockets":"'"$CPUSockets"'","cpucores":"'"$CPUCores"'","cputhreads":"'"$CPUThreads"'","cpuspeed":"'"$CPUSpeed"'","cpu":"'"$CPU"'","wa":"'"$CPUwa"'","st":"'"$CPUst"'","us":"'"$CPUus"'","sy":"'"$CPUsy"'","load1":"'"$loadavg1"'","load5":"'"$loadavg5"'","load15":"'"$loadavg15"'","ramsize":"'"$RAMSize"'","ram":"'"$RAM"'","ramswapsize":"'"$RAMSwapSize"'","ramswap":"'"$RAMSwap"'","rambuff":"'"$RAMBuff"'","ramcache":"'"$RAMCache"'","disks":"'"$DISKs"'","inodes":"'"$INODEs"'","iops":"'"$IOPS"'","raid":"'"$RAID"'","zp":"'"$ZP"'","dh":"'"$DH"'","nics":"'"$NICS"'","ipv4":"'"$IPv4"'","ipv6":"'"$IPv6"'","conn":"'"$CONN"'","temp":"'"$TEMP"'","serv":"'"$SRVCS"'","cust":"'"$CV"'","rps1":"'"$RPS1"'","rps2":"'"$RPS2"'"}'
+json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'","os":"'"$OS"'","kernel":"'"$Kernel"'","hostname":"'"$Hostname"'","time":"'"$Time"'","reqreboot":"'"$RequiresReboot"'","uptime":"'"$Uptime"'","cpumodel":"'"$CPUModel"'","cpusockets":"'"$CPUSockets"'","cpucores":"'"$CPUCores"'","cputhreads":"'"$CPUThreads"'","cpuspeed":"'"$CPUSpeed"'","cpu":"'"$CPU"'","wa":"'"$CPUwa"'","st":"'"$CPUst"'","us":"'"$CPUus"'","sy":"'"$CPUsy"'","load1":"'"$loadavg1"'","load5":"'"$loadavg5"'","load15":"'"$loadavg15"'","ramsize":"'"$RAMSize"'","ram":"'"$RAM"'","ramswapsize":"'"$RAMSwapSize"'","ramswap":"'"$RAMSwap"'","rambuff":"'"$RAMBuff"'","ramcache":"'"$RAMCache"'","disks":"'"$DISKs"'","inodes":"'"$INODEs"'","iops":"'"$IOPS"'","raid":"'"$RAID"'","zp":"'"$ZP"'","dh":"'"$DH"'","nics":"'"$NICS"'","ipv4":"'"$IPv4"'","ipv6":"'"$IPv6"'","conn":"'"$CONN"'","temp":"'"$TEMP"'","serv":"'"$SRVCS"'","cust":"'"$CV"'","oping":"'"$OPING"'","rps1":"'"$RPS1"'","rps2":"'"$RPS2"'"}'
 
 # Compress payload
 jsoncomp=$(echo -ne "$json" | gzip -cf | base64 -w 0 | sed 's/ //g' | sed 's/\//%2F/g' | sed 's/+/%2B/g')

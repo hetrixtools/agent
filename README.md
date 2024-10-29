@@ -5,23 +5,27 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 -= ChangeLog =-
 
+Version 2.3.0:
+- Added support for Outgoing Pings
+- Fixed an issue where in some cases `sensors` would yield repeated errors
+
 Version 2.2.9:
-- fixed an issue where, in some cases, NVMe disk Serial and Model were not detected properly
+- Fixed an issue where, in some cases, NVMe disk Serial and Model were not detected properly
 
 Version 2.2.8:
-- fixed an issue with incorrect MegaRAID disk detection
+- Fixed an issue with incorrect MegaRAID disk detection
 
 Version 2.2.7:
-- fixed an issue related to `mdadm` introduced in `2.2.1`
+- Fixed an issue related to `mdadm` introduced in `2.2.1`
 
 Version 2.2.6:
-- switched back to the old DEBUG mode method, as it was more efficient
-- fixed an incompatibility with older kernels introduced in `2.2.5`
-- fixed cases where Software RAID isn't picked up properly
+- Switched back to the old DEBUG mode method, as it was more efficient
+- Fixed an incompatibility with older kernels introduced in `2.2.5`
+- Fixed cases where Software RAID isn't picked up properly
 
 Version 2.2.5:
 - `zpool` now records disk usage even for unmounted pools
-- fixed some rare cases where base64 would break on multiple lines
+- Fixed some rare cases where base64 would break on multiple lines
 
 Version 2.2.4:
 - `CPUModel` should now pick up more CPU model names
