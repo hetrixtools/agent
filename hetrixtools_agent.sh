@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.9"
+Version="2.2.10"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -317,14 +317,36 @@ do
 	then
 		TempArrayIndex=()
 		TempArrayVal=()
-		while IFS='' read -r line; do TempArrayIndex+=("$line"); done < <(cat /sys/class/thermal/thermal_zone*/type)
-		while IFS='' read -r line; do TempArrayVal+=("$line"); done < <(cat /sys/class/thermal/thermal_zone*/temp)
+		for zone in /sys/class/thermal/thermal_zone*/
+		do
+			if [[ -f "${zone}/type" ]] && [[ -f "${zone}/temp" ]]
+			then
+				type_value=$(<"${zone}/type")
+				temp_value=$(<"${zone}/temp")
+				if [[ -n $type_value ]]
+				then
+					TempArrayIndex+=("$type_value")
+				fi
+				if [[ $temp_value =~ ^[0-9]+$ ]]
+				then
+					TempArrayVal+=("$temp_value")
+				else
+					TempArrayVal+=("0")
+				fi
+			fi
+		done
 		TempNameCnt=0
 		for TempName in "${TempArrayIndex[@]}"
 		do
+			TempArray[$TempName]=${TempArray[$TempName]:-0}
+        	TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
+
+			if [[ ${TempArrayVal[$TempNameCnt]} =~ ^[0-9]+$ ]]
+			then
 				TempArray[$TempName]=$((${TempArray[$TempName]} + ${TempArrayVal[$TempNameCnt]}))
 				TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
-				TempNameCnt=$((TempNameCnt + 1))
+			fi
+			TempNameCnt=$((TempNameCnt + 1))
 		done
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 	else
