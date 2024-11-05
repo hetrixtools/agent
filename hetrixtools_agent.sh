@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.2.10"
+Version="2.2.11"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -656,7 +656,7 @@ then
 			do
 				zpoolstatus=$(zpool status "$i" 2>/dev/null)
 				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | tr -d '\n\r\t ')
-				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+				mnt=$(echo -ne "$dfPB1" | grep -E "$i[ /]" | head -n 1 | awk '{print $(NF)}')
 				ZP="$ZP$mnt,$i,$zpoolstatus;"
 				zpooldiskusage[$mnt]=$(zfs get -H -o value -p used,avail "$i" | xargs | awk '{printf "%.0f %.0f %.0f", $1+$2, $1, $2}')
 			done

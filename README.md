@@ -5,6 +5,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.2.11:
+- fixed an issue where, in some cases, `zpool` metrics weren't being registered properly
+
 #### Version 2.2.10:
 - fixed an issue where, in some cases, the Temperature collection would interrupt the metrics collection loop
 
