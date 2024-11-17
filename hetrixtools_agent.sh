@@ -643,9 +643,28 @@ mdstat=$(cat /proc/mdstat 2>/dev/null)
 declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
 then
-	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
+	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}' | uniq)
 	do
 		mdadm=$(mdadm -D "$i" 2>/dev/null)
+
+		if [ $SYNOLOGY -gt 0 ]; then
+			mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+			if [ "$i" == "/dev/md0" ]; then
+				mdadm=$(echo "$mdadm" | sed 's/, degraded//g')
+			else
+				MDDEVICE=$(lsblk -Js "$i" | jq -r '.. | objects | select(any(contains("raid")?)) .name')
+				if [ -n "$MDDEVICE" ]; then
+					mdadm=$(mdadm -D "/dev/$MDDEVICE" 2>/dev/null)
+				fi
+			fi
+			if [ -n "$mdadm" ]
+			then
+				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+				RAID="$RAID$mnt,$i,$mdadm;"
+			fi
+			continue
+		fi
+
 		# DEBUG
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
 		if [ -n "$mdadm" ]
