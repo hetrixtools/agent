@@ -20,7 +20,7 @@
 
 # Set PATH/Locale
 export LC_NUMERIC="C"
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
@@ -197,11 +197,18 @@ done
 RunTimes=$(echo | awk "{print 60 / $CollectEveryXSeconds}")
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Collecting data for $RunTimes loops" >> "$ScriptPath"/debug.log; fi
 
+SYNOLOGY=0
+if [[] "$(uname -a)" =~ "synology" ]]; then
+	SYNOLOGY=1
+fi
+
 # Collect data loop
 for X in $(seq "$RunTimes")
 do
 	# Get vmstat
+	if [ $SYNOLOGY -gt 0 ]; then VMSTAT=$(dool --proc --cpu --mem-adv -s --integer --nocolor --ascii --noupdate 5 2 | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/|/ /g' | tail -1 | awk '{print 0,0,$17,$11,$12,$13,0,0,0,0,0,0,$4,$5,$6,$7,$8}' | numfmt --field 3-6 --from iec --to-unit 1000); else
 	VMSTAT=$(vmstat "$CollectEveryXSeconds" 2 | tail -1)
+	fi
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) $VMSTAT" >> "$ScriptPath"/debug.log; fi
 	
 	# CPU usage
@@ -442,6 +449,9 @@ then
 			RequiresReboot=1
 		fi
   	fi
+elif [ $SYNOLOGY -gt 0 ]
+then
+	OS="Linux Synology $(cat /etc/VERSION | grep os_name | sed 's/.*\"\(.*\)\"/\1/g') $(cat /etc/VERSION | grep productversion | sed 's/.*\"\(.*\)\"/\1/g')"
 # If all else fails
 else
 	OS="$(uname -s)"
