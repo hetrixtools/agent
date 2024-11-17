@@ -152,7 +152,11 @@ if [ -n "$ConnectionPorts" ]
 then
 	IFS=',' read -r -a ConnectionPortsArray <<< "$ConnectionPorts"
 	declare -A Connections
-	netstat=$(ss -ntu | awk '{print $5}')
+	if [ $SYNOLOGY -gt 0 ]; then
+		netstat=$(netstat -ntuW | grep ESTABLISHED | awk '{ print $4}' | sed 's/^\([^\.]*\):\([0-9]\+\)$/\[\1\]:\2/g')
+	else
+		netstat=$(ss -ntu | awk '{print $5}')
+	fi
 	for cPort in "${ConnectionPortsArray[@]}"
 	do
 		Connections[$cPort]=$(echo "$netstat" | grep -c ":$cPort$")
