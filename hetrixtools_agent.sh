@@ -20,7 +20,7 @@
 
 # Set PATH/Locale
 export LC_NUMERIC="C"
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
@@ -152,7 +152,11 @@ if [ -n "$ConnectionPorts" ]
 then
 	IFS=',' read -r -a ConnectionPortsArray <<< "$ConnectionPorts"
 	declare -A Connections
-	netstat=$(ss -ntu | awk '{print $5}')
+	if [ $SYNOLOGY -gt 0 ]; then
+		netstat=$(netstat -ntuW | grep ESTABLISHED | awk '{ print $4}' | sed 's/^\([^\.]*\):\([0-9]\+\)$/\[\1\]:\2/g')
+	else
+		netstat=$(ss -ntu | awk '{print $5}')
+	fi
 	for cPort in "${ConnectionPortsArray[@]}"
 	do
 		Connections[$cPort]=$(echo "$netstat" | grep -c ":$cPort$")
@@ -197,11 +201,18 @@ done
 RunTimes=$(echo | awk "{print 60 / $CollectEveryXSeconds}")
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Collecting data for $RunTimes loops" >> "$ScriptPath"/debug.log; fi
 
+SYNOLOGY=0
+if [[] "$(uname -a)" =~ "synology" ]]; then
+	SYNOLOGY=1
+fi
+
 # Collect data loop
 for X in $(seq "$RunTimes")
 do
 	# Get vmstat
+	if [ $SYNOLOGY -gt 0 ]; then VMSTAT=$(dool --proc --cpu --mem-adv -s --integer --nocolor --ascii --noupdate 5 2 | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/|/ /g' | tail -1 | awk '{print 0,0,$17,$11,$12,$13,0,0,0,0,0,0,$4,$5,$6,$7,$8}' | numfmt --field 3-6 --from iec --to-unit 1000); else
 	VMSTAT=$(vmstat "$CollectEveryXSeconds" 2 | tail -1)
+	fi
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) $VMSTAT" >> "$ScriptPath"/debug.log; fi
 	
 	# CPU usage
@@ -442,6 +453,9 @@ then
 			RequiresReboot=1
 		fi
   	fi
+elif [ $SYNOLOGY -gt 0 ]
+then
+	OS="Linux Synology $(cat /etc/VERSION | grep os_name | sed 's/.*\"\(.*\)\"/\1/g') $(cat /etc/VERSION | grep productversion | sed 's/.*\"\(.*\)\"/\1/g')"
 # If all else fails
 else
 	OS="$(uname -s)"
@@ -633,9 +647,28 @@ mdstat=$(cat /proc/mdstat 2>/dev/null)
 declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
 then
-	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
+	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}' | uniq)
 	do
 		mdadm=$(mdadm -D "$i" 2>/dev/null)
+
+		if [ $SYNOLOGY -gt 0 ]; then
+			mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+			if [ "$i" == "/dev/md0" ]; then
+				mdadm=$(echo "$mdadm" | sed 's/, degraded//g')
+			else
+				MDDEVICE=$(lsblk -Js "$i" | jq -r '.. | objects | select(any(contains("raid")?)) .name')
+				if [ -n "$MDDEVICE" ]; then
+					mdadm=$(mdadm -D "/dev/$MDDEVICE" 2>/dev/null)
+				fi
+			fi
+			if [ -n "$mdadm" ]
+			then
+				mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
+				RAID="$RAID$mnt,$i,$mdadm;"
+			fi
+			continue
+		fi
+
 		# DEBUG
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
 		if [ -n "$mdadm" ]
