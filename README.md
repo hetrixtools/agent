@@ -5,6 +5,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.0:
+- Added support for Outgoing Pings
+- Fixed an issue where in some cases `sensors` would yield repeated errors
+
 #### Version 2.2.11:
 - fixed an issue where, in some cases, `zpool` metrics weren't being registered properly
 
@@ -89,5 +93,5 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 #### Version 2.0.3:
 - Initial v2 release
 
-#### Version 1.x:  
+#### Version 1.x:
 https://github.com/hetrixtools/agent/tree/1.6.x

@@ -100,6 +100,10 @@ then
 	SecuredConnection=$(grep 'SecuredConnection=' $EXTRACT | awk -F'=' '{ print $2 }')
 	# CollectEveryXSeconds
 	CollectEveryXSeconds=$(grep 'CollectEveryXSeconds=' $EXTRACT | awk -F'=' '{ print $2 }')
+	# OutgoingPings
+	OutgoingPings=$(grep 'OutgoingPings="' $EXTRACT | awk -F'"' '{ print $2 }')
+	# OutgoingPingsCount
+	OutgoingPingsCount=$(grep 'OutgoingPingsCount=' $EXTRACT | awk -F'=' '{ print $2 }')
 fi
 
 # Fetching the new agent
@@ -194,6 +198,22 @@ if [ ! -z "$CollectEveryXSeconds" ]
 then
 	echo "Inserting CollectEveryXSeconds in the agent config..."
 	sed -i "s/CollectEveryXSeconds=3/CollectEveryXSeconds=$CollectEveryXSeconds/" /etc/hetrixtools/hetrixtools.cfg
+fi
+
+# Check OutgoingPings
+echo "Checking OutgoingPings..."
+if [ ! -z "$OutgoingPings" ]
+then
+	echo "Inserting OutgoingPings in the agent config..."
+	sed -i "s/OutgoingPings=\"\"/OutgoingPings=\"$OutgoingPings\"/" /etc/hetrixtools/hetrixtools.cfg
+fi
+
+# Check OutgoingPingsCount
+echo "Checking OutgoingPingsCount..."
+if [ ! -z "$OutgoingPingsCount" ]
+then
+	echo "Inserting OutgoingPingsCount in the agent config..."
+	sed -i "s/OutgoingPingsCount=20/OutgoingPingsCount=$OutgoingPingsCount/" /etc/hetrixtools/hetrixtools.cfg
 fi
 
 # Killing any running hetrixtools agents
