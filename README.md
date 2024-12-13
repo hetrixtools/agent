@@ -93,5 +93,5 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 #### Version 2.0.3:
 - Initial v2 release
 
-#### Version 1.x:  
+#### Version 1.x:
 https://github.com/hetrixtools/agent/tree/1.6.x
