@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Uninstall Script
-#	Copyright 2015 - 2024 @  HetrixTools
+#	Copyright 2015 - 2025 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #

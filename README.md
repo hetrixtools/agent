@@ -5,29 +5,37 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.0:
+- Added support for Outgoing Pings
+- Added support for `zpool` pools IO read/write metrics
+- Improved disk IO read/write metrics
+- Improved OS reading (issue [#66](https://github.com/hetrixtools/agent/issues/66))
+- Fixed an issue where in some cases `sensors` would yield repeated errors (non-impacting)
+- Fixed an issue where sometimes smart log would yield some errors (non-impacting)
+
 #### Version 2.2.11:
-- fixed an issue where, in some cases, `zpool` metrics weren't being registered properly
+- Fixed an issue where, in some cases, `zpool` metrics weren't being registered properly
 
 #### Version 2.2.10:
-- fixed an issue where, in some cases, the Temperature collection would interrupt the metrics collection loop
+- Fixed an issue where, in some cases, the Temperature collection would interrupt the metrics collection loop
 
 #### Version 2.2.9:
-- fixed an issue where, in some cases, NVMe disk Serial and Model were not detected properly
+- Fixed an issue where, in some cases, NVMe disk Serial and Model were not detected properly
 
 #### Version 2.2.8:
-- fixed an issue with incorrect MegaRAID disk detection
+- Fixed an issue with incorrect MegaRAID disk detection
 
 #### Version 2.2.7:
-- fixed an issue related to `mdadm` introduced in `2.2.1`
+- Fixed an issue related to `mdadm` introduced in `2.2.1`
 
 #### Version 2.2.6:
-- switched back to the old DEBUG mode method, as it was more efficient
-- fixed an incompatibility with older kernels introduced in `2.2.5`
-- fixed cases where Software RAID isn't picked up properly
+- Switched back to the old DEBUG mode method, as it was more efficient
+- Fixed an incompatibility with older kernels introduced in `2.2.5`
+- Fixed cases where Software RAID isn't picked up properly
 
 #### Version 2.2.5:
 - `zpool` now records disk usage even for unmounted pools
-- fixed some rare cases where base64 would break on multiple lines
+- Fixed some rare cases where base64 would break on multiple lines
 
 #### Version 2.2.4:
 - `CPUModel` should now pick up more CPU model names
@@ -89,5 +97,5 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 #### Version 2.0.3:
 - Initial v2 release
 
-#### Version 1.x:  
+#### Version 1.x:
 https://github.com/hetrixtools/agent/tree/1.6.x
