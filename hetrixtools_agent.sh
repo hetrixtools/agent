@@ -242,15 +242,60 @@ do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
 done
+declare -A BlockSize
 declare -A IOPSRead
 declare -A IOPSWrite
 diskstats=$(cat /proc/diskstats)
+lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,MOUNTPOINTS)
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
-	IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
-	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i IOPS Read: ${IOPSRead[$i]} Write: ${IOPSWrite[$i]}" >> "$ScriptPath"/debug.log; fi
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) IOPS Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
+	BlockSize[$i]=$(echo "$lsblk_blocksize" | grep -w "${vDISKs[$i]}" | awk '{print $2}')
+	if [ -z "${BlockSize[$i]}" ] || ! [[ ${BlockSize[$i]} =~ ^[0-9]+$ ]] || [ "$(echo "${BlockSize[$i]}" | wc -l)" -ne 1 ] || [ "${BlockSize[$i]}" -eq 0 ]
+	then
+		BlockSize[$i]=512
+	fi
+	IOPSRead[$i]=0
+	IOPSWrite[$i]=0
+	if [ ! -z "${vDISKs[$i]}" ]
+	then
+		IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
+		IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
+	fi
+	if [ -z "${IOPSRead[$i]}" ]
+	then
+		IOPSRead[$i]=0
+	fi
+	if [ -z "${IOPSWrite[$i]}" ]
+	then
+		IOPSWrite[$i]=0
+	fi
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i Block Size: ${BlockSize[$i]} IOPS Read: ${IOPSRead[$i]} Write: ${IOPSWrite[$i]}" >> "$ScriptPath"/debug.log; fi
 done
+
+# Zpool IOPS
+if [ -x "$(command -v zpool)" ]
+then
+	readarray -t zpoolsray < <(zpool list -H -o name)
+	if [ ${#zpoolsray[@]} -gt 0 ]
+	then
+		current_second=$(date +%S | sed 's/^0*//')
+		remaining_seconds=$((58 - current_second))
+		declare -A pipes
+		declare -A pids
+		declare -A zpools_mountpoints
+		for pool in "${zpoolsray[@]}"
+		do
+			zpools_mountpoints[$pool]=$(zfs get -H -o value mountpoint "$pool")
+			pipe=$(mktemp -u)
+			mkfifo "$pipe"
+			pipes[$pool]="$pipe"
+			timeout 60 zpool iostat -v -p "$pool" "$remaining_seconds" 2 | awk 'BEGIN{found=0} /capacity/ {found++} found==2' | grep "$pool" > "$pipe" &
+			pids[$pool]=$!
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool mounted at ${zpools_mountpoints[$pool]} starting iostat pid ${pids[$pool]} pipe ${pipes[$pool]} for $remaining_seconds seconds" >> "$ScriptPath"/debug.log; fi
+		done
+	fi
+fi
 
 # Calculate how many how many data sample loops
 RunTimes=$(echo | awk "{print 60 / $CollectEveryXSeconds}")
@@ -607,12 +652,34 @@ IOPS=""
 diskstats=$(cat /proc/diskstats)
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * 512 / $tTIMEDIFF}" 2> /dev/null)
+	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * ${BlockSize[$i]} / $tTIMEDIFF}" 2> /dev/null)
 	IOPSRead[$i]=$(echo "${IOPSRead[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
-	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}" 2> /dev/null) * 512 / $tTIMEDIFF}" 2> /dev/null)
+	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}" 2> /dev/null) * ${BlockSize[$i]} / $tTIMEDIFF}" 2> /dev/null)
 	IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
 	IOPS="$IOPS$i,${IOPSRead[$i]},${IOPSWrite[$i]};"
 done
+# Zpool IOPS
+if [ -x "$(command -v zpool)" ]
+then
+	if [ ${#zpoolsray[@]} -gt 0 ]
+	then
+		for pool in "${zpoolsray[@]}"
+		do
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool mounted at ${zpools_mountpoints[$pool]} reading from iostat pipe" >> "$ScriptPath"/debug.log; fi
+			zpooloutput=$(<"${pipes[$pool]}")
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool iostat output: $zpooloutput" >> "$ScriptPath"/debug.log; fi
+			if [ "$zpooloutput" != "Terminated" ] && [ -n "$zpooloutput" ]
+			then
+				read_bytes_per_sec=$(echo "$zpooloutput" | awk '{print $(NF-1)}')
+				write_bytes_per_sec=$(echo "$zpooloutput" | awk '{print $NF}')
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool read bytes per sec: $read_bytes_per_sec write bytes per sec: $write_bytes_per_sec" >> "$ScriptPath"/debug.log; fi
+				kill "${pids[$pool]}" 2>/dev/null
+				rm "${pipes[$pool]}" 2>/dev/null
+				IOPS="$IOPS${zpools_mountpoints[$pool]},$read_bytes_per_sec,$write_bytes_per_sec;"
+			fi
+		done
+	fi
+fi
 IOPS=$(echo -ne "$IOPS" | base64 | tr -d '\n\r\t ')
 
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) lsblk: $(lsblk -l | base64 | tr -d '\n\r\t ') Disks: $DISKs Inodes: $INODEs IOPS: $IOPS" >> "$ScriptPath"/debug.log; fi
