@@ -870,7 +870,7 @@ then
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe List:\n$NVMeList" >> "$ScriptPath"/debug.log; fi
 		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
 		do
-			DHealth=$(nvme smart-log "$i" 2>/dev/null)
+			DHealth=$(nvme smart-log "$i")
 			if grep -q 'NVME' <<< "$DHealth"
 			then
 				if [ -x "$(command -v smartctl)" ]
@@ -951,17 +951,19 @@ json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'",
 # Compress payload
 jsoncomp=$(echo -ne "$json" | gzip -cf | base64 -w 0 | sed 's/ //g' | sed 's/\//%2F/g' | sed 's/+/%2B/g')
 
-# Set the default log path
+# Set the log path
 HetrixAgentLogPath="$ScriptPath/hetrixtools_agent.log"
-if [ -d "/run" ] # Check /run
+# Get data path
+if [ -d "/run" ]
 then
-	# On newer Linux, tmpfs is mounted at /run
-	HetrixAgentLogPath="/run/hetrixtools_agent.log"
-elif [ -d "/var/run" ] # Check /var/run
+  # On newer Linux, tmpfs is mounted at /run
+  HetrixAgentLogPath="/run/hetrixtools_agent.log"
+elif [ -d "/var/run" ]
 then
-	# On older Linux, tmpfs is mounted at /var/run
-	HetrixAgentLogPath="/var/run/hetrixtools_agent.log"
+  # On older Linux, tmpfs is mounted at /var/run
+  HetrixAgentLogPath="/var/run/hetrixtools_agent.log"
 fi
+# The default path /run/hetrixtools_agent.log will be used if both /run and /var/run are missing
 
 # Save data to file
 echo "j=$jsoncomp" > "$HetrixAgentLogPath"
