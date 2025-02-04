@@ -951,17 +951,31 @@ json='{"version":"'"$Version"'","SID":"'"$SID"'","agent":"0","user":"'"$User"'",
 # Compress payload
 jsoncomp=$(echo -ne "$json" | gzip -cf | base64 -w 0 | sed 's/ //g' | sed 's/\//%2F/g' | sed 's/+/%2B/g')
 
+# Set the log path
+HetrixAgentLogPath="$ScriptPath/hetrixtools_agent.log"
+# Get data path
+if [ -d "/run" ]
+then
+  # On newer Linux, tmpfs is mounted at /run
+  HetrixAgentLogPath="/run/hetrixtools_agent.log"
+elif [ -d "/var/run" ]
+then
+  # On older Linux, tmpfs is mounted at /var/run
+  HetrixAgentLogPath="/var/run/hetrixtools_agent.log"
+fi
+# The default path /run/hetrixtools_agent.log will be used if both /run and /var/run are missing
+
 # Save data to file
-echo "j=$jsoncomp" > "$ScriptPath"/hetrixtools_agent.log
+echo "j=$jsoncomp" > "$HetrixAgentLogPath"
 
 if [ "$DEBUG" -eq 1 ]
 then
 	echo -e "$ScriptStartTime-$(date +%T]) JSON:\n$json" >> "$ScriptPath"/debug.log
 	# Post data
 	echo -e "$ScriptStartTime-$(date +%T]) Posting data" >> "$ScriptPath"/debug.log
-	wget -v --debug --retry-connrefused --waitretry=1 -t 3 -T 15 -O- --post-file="$ScriptPath/hetrixtools_agent.log" $SecuredConnection https://sm.hetrixtools.net/v2/ &>> "$ScriptPath"/debug.log 
+	wget -v --debug --retry-connrefused --waitretry=1 -t 3 -T 15 -O- --post-file="$HetrixAgentLogPath" $SecuredConnection https://sm.hetrixtools.net/v2/ &>> "$ScriptPath"/debug.log 
 	echo -e "$ScriptStartTime-$(date +%T]) Data posted" >> "$ScriptPath"/debug.log
 else
 	# Post data
-	wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" $SecuredConnection https://sm.hetrixtools.net/v2/ &> /dev/null
+	wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file="$HetrixAgentLogPath" $SecuredConnection https://sm.hetrixtools.net/v2/ &> /dev/null
 fi
