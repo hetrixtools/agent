@@ -867,6 +867,7 @@ then
 	if [ -x "$(command -v nvme)" ] #Using nvme-cli (for NVMe)
 	then
 		NVMeList="$(nvme list)"
+		NVMeListJ="$(nvme list -o json)"
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe List:\n$NVMeList" >> "$ScriptPath"/debug.log; fi
 		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
 		do
@@ -879,10 +880,26 @@ then
 					DHealth=$(smartctl -H /dev/"${ii%??}")"\n$DHealth"
 				fi
 				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-				MODELCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "Model" | cut -d: -f1)
-				SNCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "SN" | cut -d: -f1)
-				DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$MODELCOL" '{print $col}')"
-				DSerial="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$SNCOL" '{print $col}')"
+				DeviceBlock=$(echo "$NVMeListJ" | awk -v RS='{' -v dev="$i" '$0 ~ dev')
+				DModel=$(echo "$DeviceBlock" | grep '"ModelNumber"' | sed -E 's/.*"ModelNumber"\s*:\s*"([^"]+)".*/\1/')
+				DSerial=$(echo "$DeviceBlock" | grep '"SerialNumber"' | sed -E 's/.*"SerialNumber"\s*:\s*"([^"]+)".*/\1/')
+				DFirmware=$(echo "$DeviceBlock" | grep '"Firmware"' | sed -E 's/.*"Firmware"\s*:\s*"([^"]+)".*/\1/')
+				if [ -z "$DModel" ]
+				then
+					MODELCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "Model" | cut -d: -f1)
+					DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$MODELCOL" '{print $col}')"
+				else
+					if [ -n "$DFirmware" ]
+					then
+						DModel="$DModel - $DFirmware"
+					fi
+				fi
+				if [ -z "$DSerial" ]
+				then
+					SNCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "SN" | cut -d: -f1)
+					DSerial="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$SNCOL" '{print $col}')"
+				fi
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe $i Model: $DModel Serial: $DSerial" >> "$ScriptPath"/debug.log; fi
 				i=${i##*/}
 				DH="$DH""2,$i,$DHealth,$DModel,$DSerial;"
 			fi
