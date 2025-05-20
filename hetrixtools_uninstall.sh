@@ -21,10 +21,10 @@
 # Set PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Check if install script is run by root
+# Check if uninstall script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "Please run the install script as root."
+  then echo "ERROR: Please run the uninstall script as root."
   exit
 fi
 echo "... done."
