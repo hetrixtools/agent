@@ -49,11 +49,21 @@ function servicestatus() {
 			if systemctl is-active --quiet "$1"
 			then # Up
 				echo "1"
-			else # Down
+			else # Down, try service command
+				if service "$1" status > /dev/null 2>&1
+				then
+					echo "1"
+				else
+					echo "0"
+				fi
+			fi
+		else # No systemctl, try service command
+			if service "$1" status > /dev/null 2>&1
+			then
+				echo "1"
+			else
 				echo "0"
 			fi
-		else # No systemctl
-			echo "0"
 		fi
 	fi
 }
