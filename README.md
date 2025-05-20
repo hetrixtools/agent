@@ -2,7 +2,6 @@
 
 Documentation available here: https://docs.hetrixtools.com/category/server-monitor/
 
-
 ### Changelog
 
 #### Version 2.3.0:
