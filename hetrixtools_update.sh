@@ -35,10 +35,10 @@ else
 	BRANCH=$1
 fi
 
-# Check if install script is run by root
+# Check if update script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "ERROR: Please run the install script as root."
+  then echo "ERROR: Please run the update script as root."
   exit
 fi
 echo "... done."
@@ -229,7 +229,7 @@ then
 	chmod -R 700 /etc/hetrixtools
 fi
 
-# Cleaning up install file
+# Cleaning up update file
 echo "Cleaning up the update file..."
 if [ -f $0 ]
 then

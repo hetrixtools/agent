@@ -49,7 +49,7 @@ ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
 echo "... done."
 
 # Checking if hetrixtools user exists
-echo "Checking if hetrixtool user exists..."
+echo "Checking if hetrixtools user exists..."
 if id -u hetrixtools >/dev/null 2>&1
 then
 	echo "The hetrixtools user exists, killing its processes..."
@@ -68,7 +68,7 @@ crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixt
 echo "... done."
 
 # Cleaning up uninstall file
-echo "Cleaning up the installation file..."
+echo "Cleaning up the uninstall file..."
 if [ -f $0 ]
 then
     rm -f $0

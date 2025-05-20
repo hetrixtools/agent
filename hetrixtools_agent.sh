@@ -109,7 +109,7 @@ function pingstatus() {
 # Check if the agent needs to run Outgoing PING tests
 if [ "$1" == "ping" ]
 then
-	$(pingstatus "$2" "$3")
+	pingstatus "$2" "$3"
 	exit 1
 fi
 
