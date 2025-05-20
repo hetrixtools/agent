@@ -152,7 +152,7 @@ if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Found $HTProc
 if [ "$HTProcesses" -ge 50 ]
 then
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Killing $HTProcesses lingering agent processes" >> "$ScriptPath"/debug.log; fi
-	pgrep -f hetrixtools_agent.sh | xargs kill -9
+	pgrep -f hetrixtools_agent.sh | xargs -r kill -9
 fi
 if [ "$HTProcesses" -ge 10 ]
 then

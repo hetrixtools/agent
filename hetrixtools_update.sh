@@ -218,7 +218,7 @@ fi
 
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."
-ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
+ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs -r kill -9
 echo "... done."
 
 # Assign permissions
