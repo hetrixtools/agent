@@ -247,3 +247,4 @@ echo "... done."
 
 # All done
 echo "HetrixTools agent update completed. It can take up to two (2) minutes for new data to be collected."
+

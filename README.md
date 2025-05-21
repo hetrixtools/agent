@@ -101,3 +101,4 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 #### Version 1.x:
 https://github.com/hetrixtools/agent/tree/1.6.x
+

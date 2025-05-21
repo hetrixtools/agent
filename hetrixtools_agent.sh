@@ -992,3 +992,4 @@ else
 	# Post data
 	wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" $SecuredConnection https://sm.hetrixtools.net/v2/ &> /dev/null
 fi
+
