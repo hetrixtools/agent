@@ -35,6 +35,14 @@ else
 	BRANCH=$1
 fi
 
+# Check if the selected branch exists
+if wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+then
+	echo "Updating to $BRANCH branch..."
+else
+	echo "ERROR: Branch $BRANCH does not exist." >&2
+	exit 1
+fi
 # Check if update script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
