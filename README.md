@@ -7,9 +7,11 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 #### Version 2.3.0:
 - Added support for Outgoing Pings
 - Added support for `zpool` pools IO read/write metrics
+- Fallback service-status check via `service` command
 - Improved NVMe disks info reading
 - Improved disk IO read/write metrics
 - Improved OS reading (issue [#66](https://github.com/hetrixtools/agent/issues/66))
+- Branch-existence verification in the update script
 - Fixed an issue where in some cases `sensors` would yield repeated errors (non-impacting)
 - Fixed an issue where sometimes smart log would yield some errors (non-impacting)
 
