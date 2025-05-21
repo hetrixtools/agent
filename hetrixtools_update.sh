@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Update Script
-#	Copyright 2015 - 2024 @  HetrixTools
+#	Copyright 2015 - 2025 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -35,10 +35,18 @@ else
 	BRANCH=$1
 fi
 
-# Check if install script is run by root
+# Check if the selected branch exists
+if wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+then
+	echo "Updating to $BRANCH branch..."
+else
+	echo "ERROR: Branch $BRANCH does not exist." >&2
+	exit 1
+fi
+# Check if update script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "ERROR: Please run the install script as root."
+  then echo "ERROR: Please run the update script as root."
   exit
 fi
 echo "... done."
@@ -100,6 +108,10 @@ then
 	SecuredConnection=$(grep 'SecuredConnection=' $EXTRACT | awk -F'=' '{ print $2 }')
 	# CollectEveryXSeconds
 	CollectEveryXSeconds=$(grep 'CollectEveryXSeconds=' $EXTRACT | awk -F'=' '{ print $2 }')
+	# OutgoingPings
+	OutgoingPings=$(grep 'OutgoingPings="' $EXTRACT | awk -F'"' '{ print $2 }')
+	# OutgoingPingsCount
+	OutgoingPingsCount=$(grep 'OutgoingPingsCount=' $EXTRACT | awk -F'=' '{ print $2 }')
 fi
 
 # Fetching the new agent
@@ -196,9 +208,25 @@ then
 	sed -i "s/CollectEveryXSeconds=3/CollectEveryXSeconds=$CollectEveryXSeconds/" /etc/hetrixtools/hetrixtools.cfg
 fi
 
+# Check OutgoingPings
+echo "Checking OutgoingPings..."
+if [ ! -z "$OutgoingPings" ]
+then
+	echo "Inserting OutgoingPings in the agent config..."
+	sed -i "s/OutgoingPings=\"\"/OutgoingPings=\"$OutgoingPings\"/" /etc/hetrixtools/hetrixtools.cfg
+fi
+
+# Check OutgoingPingsCount
+echo "Checking OutgoingPingsCount..."
+if [ ! -z "$OutgoingPingsCount" ]
+then
+	echo "Inserting OutgoingPingsCount in the agent config..."
+	sed -i "s/OutgoingPingsCount=20/OutgoingPingsCount=$OutgoingPingsCount/" /etc/hetrixtools/hetrixtools.cfg
+fi
+
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."
-ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
+ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs -r kill -9
 echo "... done."
 
 # Assign permissions
@@ -209,7 +237,7 @@ then
 	chmod -R 700 /etc/hetrixtools
 fi
 
-# Cleaning up install file
+# Cleaning up update file
 echo "Cleaning up the update file..."
 if [ -f $0 ]
 then
@@ -219,3 +247,4 @@ echo "... done."
 
 # All done
 echo "HetrixTools agent update completed. It can take up to two (2) minutes for new data to be collected."
+

@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Uninstall Script
-#	Copyright 2015 - 2024 @  HetrixTools
+#	Copyright 2015 - 2025 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -21,10 +21,10 @@
 # Set PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Check if install script is run by root
+# Check if uninstall script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "Please run the install script as root."
+  then echo "ERROR: Please run the uninstall script as root."
   exit
 fi
 echo "... done."
@@ -45,11 +45,11 @@ echo "... done."
 
 # Killing any running hetrixtools agents
 echo "Killing any hetrixtools agent scripts that may be currently running..."
-ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs kill -9
+ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs -r kill -9
 echo "... done."
 
 # Checking if hetrixtools user exists
-echo "Checking if hetrixtool user exists..."
+echo "Checking if hetrixtools user exists..."
 if id -u hetrixtools >/dev/null 2>&1
 then
 	echo "The hetrixtools user exists, killing its processes..."
@@ -68,7 +68,7 @@ crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixt
 echo "... done."
 
 # Cleaning up uninstall file
-echo "Cleaning up the installation file..."
+echo "Cleaning up the uninstall file..."
 if [ -f $0 ]
 then
     rm -f $0
@@ -83,3 +83,4 @@ echo "... done."
 
 # All done
 echo "HetrixTools agent uninstallation completed."
+
