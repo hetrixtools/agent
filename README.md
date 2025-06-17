@@ -12,6 +12,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 - Improved disk IO read/write metrics
 - Improved OS reading (issue [#66](https://github.com/hetrixtools/agent/issues/66))
 - Branch-existence verification in the update script
+- Branch-existence verification in the install script
 - Fixed an issue where in some cases `sensors` would yield repeated errors (non-impacting)
 - Fixed an issue where sometimes smart log would yield some errors (non-impacting)
 
