@@ -49,10 +49,16 @@ if [ -z "$2" ]
 	exit
 fi
 
-# Check if system has crontab and wget
-echo "Checking for crontab and wget..."
-command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent." >&2; exit 1; }
+# Check for wget and systemd/cron availability
+echo "Checking system utilities..."
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
+if command -v systemctl >/dev/null 2>&1
+then
+USE_SYSTEMD=1
+else
+USE_SYSTEMD=0
+command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent." >&2; exit 1; }
+fi
 echo "... done."
 
 # Remove old agent (if exists)
@@ -164,15 +170,60 @@ crontab -u root -l | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/n
 crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
 echo "... done."
 
-# Setup the new cronjob to run the agent either as 'root' or as 'hetrixtools' user, depending on client's installation choice.
-# Default is running the agent as 'hetrixtools' user, unless chosen otherwise by the client when fetching the installation code from the hetrixtools website.
-if [ "$2" -eq "1" ]
+# Removing old systemd service/timer (if exists)
+if [ "$USE_SYSTEMD" -eq 1 ]
 then
-	echo "Setting up the new cronjob as 'root' user..."
-	crontab -u root -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u root - >/dev/null 2>&1
+	systemctl stop hetrixtools_agent.timer >/dev/null 2>&1
+	systemctl disable hetrixtools_agent.timer >/dev/null 2>&1
+	rm -f /etc/systemd/system/hetrixtools_agent.timer
+	systemctl stop hetrixtools_agent.service >/dev/null 2>&1
+	systemctl disable hetrixtools_agent.service >/dev/null 2>&1
+	rm -f /etc/systemd/system/hetrixtools_agent.service
+	systemctl daemon-reload >/dev/null 2>&1
+fi
+
+# Setup the new systemd or cronjob timer to run the agent every minute
+if [ "$USE_SYSTEMD" -eq 1 ]
+then
+	echo "Setting up systemd timer..."
+		if [ "$2" -eq "1" ]
+		then
+		SERVICE_USER=root
+		else
+		SERVICE_USER=hetrixtools
+		fi
+	cat > /etc/systemd/system/hetrixtools_agent.service <<EOF
+[Unit]
+Description=HetrixTools Agent
+
+[Service]
+Type=oneshot
+User=$SERVICE_USER
+ExecStart=/bin/bash /etc/hetrixtools/hetrixtools_agent.sh
+EOF
+	cat > /etc/systemd/system/hetrixtools_agent.timer <<EOF
+[Unit]
+Description=Runs HetrixTools agent every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+	systemctl daemon-reload >/dev/null 2>&1
+	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
 else
-	echo "Setting up the new cronjob as 'hetrixtools' user..."
-	crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u hetrixtools - >/dev/null 2>&1
+	# Default is running the agent as 'hetrixtools' user, unless chosen otherwise by the client when fetching the installation code from the hetrixtools website.
+	if [ "$2" -eq "1" ]
+	then
+		echo "Setting up the new cronjob as 'root' user..."
+		crontab -u root -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u root - >/dev/null 2>&1
+	else
+		echo "Setting up the new cronjob as 'hetrixtools' user..."
+		crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u hetrixtools - >/dev/null 2>&1
+	fi
 fi
 echo "... done."
 
