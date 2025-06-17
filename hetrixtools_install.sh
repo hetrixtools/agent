@@ -24,15 +24,20 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Branch
 BRANCH="master"
 
-# Check if first argument is version/branch or SID
-if [ -n "$1" ]
+# Check if first argument is branch or SID
+if [ ${#1} -ne 32 ]
 then
-	if [ ${#1} -ne 32 ]
-	then
-		BRANCH=$1
-		shift
-	fi
+	BRANCH=$1
+	shift
 fi
+
+# Check if install script is run by root
+echo "Checking root privileges..."
+if [ "$EUID" -ne 0 ]
+  then echo "ERROR: Please run the install script as root."
+  exit
+fi
+echo "... done."
 
 # Check if the selected branch exists
 if wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
@@ -42,13 +47,6 @@ else
 	echo "ERROR: Branch $BRANCH does not exist." >&2
 	exit 1
 fi
-# Check if install script is run by root
-echo "Checking root privileges..."
-if [ "$EUID" -ne 0 ]
-  then echo "ERROR: Please run the install script as root."
-  exit
-fi
-echo "... done."
 
 # Fetch Server Unique ID
 SID=$1
