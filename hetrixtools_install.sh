@@ -182,7 +182,7 @@ then
 	systemctl daemon-reload >/dev/null 2>&1
 fi
 
-# Setup the new cronjob or systemd timer to run the agent every minute
+# Setup the new systemd or cronjob timer to run the agent every minute
 if [ "$USE_SYSTEMD" -eq 1 ]
 then
 	echo "Setting up systemd timer..."
