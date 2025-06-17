@@ -193,25 +193,25 @@ then
 		SERVICE_USER=hetrixtools
 		fi
 	cat > /etc/systemd/system/hetrixtools_agent.service <<EOF
-	[Unit]
-	Description=HetrixTools Agent
-	
-	[Service]
-	Type=oneshot
-	User=$SERVICE_USER
-	ExecStart=/bin/bash /etc/hetrixtools/hetrixtools_agent.sh
-	EOF
+[Unit]
+Description=HetrixTools Agent
+
+[Service]
+Type=oneshot
+User=$SERVICE_USER
+ExecStart=/bin/bash /etc/hetrixtools/hetrixtools_agent.sh
+EOF
 	cat > /etc/systemd/system/hetrixtools_agent.timer <<EOF
-	[Unit]
-	Description=Runs HetrixTools agent every minute
-	
-	[Timer]
-	OnCalendar=*-*-* *:*:00
-	Persistent=true
-	
-	[Install]
-	WantedBy=timers.target
-	EOF
+[Unit]
+Description=Runs HetrixTools agent every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
 	systemctl daemon-reload >/dev/null 2>&1
 	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
 else
