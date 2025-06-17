@@ -2,13 +2,13 @@
 #
 #
 #	HetrixTools Server Monitoring Agent - Uninstall Script
-	#	Copyright 2015 - 2025 @  HetrixTools
-	#	For support, please open a ticket on our website https://hetrixtools.com
-	#
-	#
-	#		DISCLAIMER OF WARRANTY
-	#
-	#	The Software is provided "AS IS" and "WITH ALL FAULTS," without warranty of any kind, 
+#	Copyright 2015 - 2025 @  HetrixTools
+#	For support, please open a ticket on our website https://hetrixtools.com
+#
+#
+#		DISCLAIMER OF WARRANTY
+#
+#	The Software is provided "AS IS" and "WITH ALL FAULTS," without warranty of any kind, 
 #	including without limitation the warranties of merchantability, fitness for a particular purpose and non-infringement. 
 #	HetrixTools makes no warranty that the Software is free of defects or is suitable for any particular purpose. 
 #	In no event shall HetrixTools be responsible for loss or damages arising from the installation or use of the Software, 
