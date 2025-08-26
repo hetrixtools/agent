@@ -774,15 +774,30 @@ mdstat=$(cat /proc/mdstat 2>/dev/null)
 declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
 then
-	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
+	mdarrays=()
+	while IFS= read -r mdname; do
+		mdname=${mdname%:}
+		if [ -n "$mdname" ]; then mdarrays+=("$mdname"); fi
+	done < <(awk '/^md[0-9]+[[:space:]]*:/ {print $1}' /proc/mdstat 2>/dev/null)
+	for md in "${mdarrays[@]}"
 	do
-		mdadm=$(mdadm -D "$i" 2>/dev/null)
+		mddev="/dev/$md"
+		mdadm=$(mdadm -D "$mddev" 2>/dev/null)
 		# DEBUG
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $mddev:\n$mdadm" >> "$ScriptPath"/debug.log; fi
 		if [ -n "$mdadm" ]
 		then
-			mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
-			RAID="$RAID$mnt,$i,$mdadm;"
+			mnt=$(findmnt -rn -S "$mddev" -o TARGET 2>/dev/null | head -n1)
+			if [ -z "$mnt" ]; then
+				mnt=$(lsblk -nrpo NAME,MOUNTPOINTS "$mddev" 2>/dev/null | awk '$2!=""{print $2}' | awk '{print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
+			fi
+			# DEBUG
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) md $mddev -> chosen mountpoint: ${mnt:--}" >> "$ScriptPath"/debug.log; fi
+			if [ -z "$mnt" ]; then 
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) No mountpoint found for $mddev" >> "$ScriptPath"/debug.log; fi
+			else
+				RAID="$RAID$mnt,$mddev,$mdadm;"
+			fi
 		fi
 	done
 	if [ -x "$(command -v zpool)" ]
