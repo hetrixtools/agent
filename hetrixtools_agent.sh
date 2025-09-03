@@ -202,7 +202,7 @@ RunTimes=$(echo | awk "{print 60 / $CollectEveryXSeconds}")
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Collecting data for $RunTimes loops" >> "$ScriptPath"/debug.log; fi
 
 SYNOLOGY=0
-if [[] "$(uname -a)" =~ "synology" ]]; then
+if [[ "$(uname -a)" =~ "synology" ]]; then
 	SYNOLOGY=1
 fi
 
