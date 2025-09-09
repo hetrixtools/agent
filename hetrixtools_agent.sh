@@ -256,7 +256,11 @@ declare -A BlockSize
 declare -A IOPSRead
 declare -A IOPSWrite
 diskstats=$(cat /proc/diskstats)
-lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,MOUNTPOINTS)
+lsblk_mnt_option="MOUNTPOINTS"
+if ! lsblk -l -o NAME,MOUNTPOINTS >/dev/null 2>&1; then
+    lsblk_mnt_option="MOUNTPOINT"
+fi
+lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,${lsblk_mnt_option} 2>/dev/null)
 for i in "${!vDISKs[@]}"
 do
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) IOPS Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
@@ -789,7 +793,7 @@ then
 		then
 			mnt=$(findmnt -rn -S "$mddev" -o TARGET 2>/dev/null | head -n1)
 			if [ -z "$mnt" ]; then
-				mnt=$(lsblk -nrpo NAME,MOUNTPOINTS "$mddev" 2>/dev/null | awk '$2!=""{print $2}' | awk '{print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
+				mnt=$(lsblk -nrpo NAME,${lsblk_mnt_option} "$mddev" 2>/dev/null | awk '$2!=""{print $2}' | awk '{print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
 			fi
 			# DEBUG
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) md $mddev -> chosen mountpoint: ${mnt:--}" >> "$ScriptPath"/debug.log; fi
@@ -1007,4 +1011,3 @@ else
 	# Post data
 	wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" $SecuredConnection https://sm.hetrixtools.net/v2/ &> /dev/null
 fi
-

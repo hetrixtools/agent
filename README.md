@@ -8,6 +8,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 - Improved `mdadm` RAID reading
 - Improved auto network detection
 - Improved install script
+- Fixed `lsblk` compatibility with older operating systems (issue [#79](https://github.com/hetrixtools/agent/issues/79))
 
 #### Version 2.3.0:
 - Added support for Outgoing Pings
