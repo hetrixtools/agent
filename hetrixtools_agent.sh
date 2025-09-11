@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.0"
+Version="2.3.1"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -196,7 +196,7 @@ then
 else
 	# Automatically detect the network interfaces
 	NetworkInterfacesArray=()
-	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
+	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | grep -v ' master ' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
 fi
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interfaces: ${NetworkInterfacesArray[*]}" >> "$ScriptPath"/debug.log; fi
 
@@ -256,7 +256,11 @@ declare -A BlockSize
 declare -A IOPSRead
 declare -A IOPSWrite
 diskstats=$(cat /proc/diskstats)
-lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,MOUNTPOINTS)
+lsblk_mnt_option="MOUNTPOINTS"
+if ! lsblk -l -o NAME,MOUNTPOINTS >/dev/null 2>&1; then
+	lsblk_mnt_option="MOUNTPOINT"
+fi
+lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,${lsblk_mnt_option} 2>/dev/null)
 for i in "${!vDISKs[@]}"
 do
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) IOPS Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
@@ -774,15 +778,30 @@ mdstat=$(cat /proc/mdstat 2>/dev/null)
 declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
 then
-	for i in $(echo -ne "$dfPB1" | awk '$1 ~ /\// {print}' | awk '{print $1}')
+	mdarrays=()
+	while IFS= read -r mdname; do
+		mdname=${mdname%:}
+		if [ -n "$mdname" ]; then mdarrays+=("$mdname"); fi
+	done < <(awk '/^md[0-9]+[[:space:]]*:/ {print $1}' /proc/mdstat 2>/dev/null)
+	for md in "${mdarrays[@]}"
 	do
-		mdadm=$(mdadm -D "$i" 2>/dev/null)
+		mddev="/dev/$md"
+		mdadm=$(mdadm -D "$mddev" 2>/dev/null)
 		# DEBUG
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $i:\n$mdadm" >> "$ScriptPath"/debug.log; fi
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) mdadm -D $mddev:\n$mdadm" >> "$ScriptPath"/debug.log; fi
 		if [ -n "$mdadm" ]
 		then
-			mnt=$(echo -ne "$dfPB1" | grep "$i " | awk '{print $(NF)}')
-			RAID="$RAID$mnt,$i,$mdadm;"
+			mnt=$(findmnt -rn -S "$mddev" -o TARGET 2>/dev/null | head -n1)
+			if [ -z "$mnt" ]; then
+				mnt=$(lsblk -nrpo NAME,${lsblk_mnt_option} "$mddev" 2>/dev/null | awk '$2!=""{print $2}' | awk '{print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
+			fi
+			# DEBUG
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) md $mddev -> chosen mountpoint: ${mnt:--}" >> "$ScriptPath"/debug.log; fi
+			if [ -z "$mnt" ]; then 
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) No mountpoint found for $mddev" >> "$ScriptPath"/debug.log; fi
+			else
+				RAID="$RAID$mnt,$mddev,$mdadm;"
+			fi
 		fi
 	done
 	if [ -x "$(command -v zpool)" ]
@@ -992,4 +1011,3 @@ else
 	# Post data
 	wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file="$ScriptPath/hetrixtools_agent.log" $SecuredConnection https://sm.hetrixtools.net/v2/ &> /dev/null
 fi
-

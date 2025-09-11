@@ -61,10 +61,27 @@ else
 fi
 echo "... done."
 
+# Removing systemd service/timer if exists
+echo "Removing any hetrixtools systemd service/timer, if exists..."
+if command -v systemctl >/dev/null 2>&1
+then
+	systemctl stop hetrixtools_agent.timer >/dev/null 2>&1
+	systemctl disable hetrixtools_agent.timer >/dev/null 2>&1
+	rm -f /etc/systemd/system/hetrixtools_agent.timer
+	systemctl stop hetrixtools_agent.service >/dev/null 2>&1
+	systemctl disable hetrixtools_agent.service >/dev/null 2>&1
+	rm -f /etc/systemd/system/hetrixtools_agent.service
+	systemctl daemon-reload >/dev/null 2>&1
+fi
+echo "... done."
+
 # Removing cronjob (if exists)
 echo "Removing any hetrixtools cronjob, if exists..."
-crontab -u root -l | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
-crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
+if command -v crontab >/dev/null 2>&1
+then
+    crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
+    crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
+fi
 echo "... done."
 
 # Cleaning up uninstall file
@@ -83,4 +100,3 @@ echo "... done."
 
 # All done
 echo "HetrixTools agent uninstallation completed."
-

@@ -4,6 +4,12 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.1:
+- Improved `mdadm` RAID reading
+- Improved auto network detection
+- Improved install script to use `systemd`
+- Fixed `lsblk` compatibility with older operating systems (issue [#79](https://github.com/hetrixtools/agent/issues/79))
+
 #### Version 2.3.0:
 - Added support for Outgoing Pings
 - Added support for `zpool` pools IO read/write metrics
