@@ -34,8 +34,8 @@ fi
 # Check if install script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "ERROR: Please run the install script as root."
-  exit
+	then echo "ERROR: Please run the install script as root."
+	exit 1
 fi
 echo "... done."
 
@@ -68,12 +68,18 @@ fi
 # Check for wget and systemd/cron availability
 echo "Checking system utilities..."
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
-if command -v systemctl >/dev/null 2>&1
-then
-USE_SYSTEMD=1
-else
 USE_SYSTEMD=0
-command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent." >&2; exit 1; }
+if command -v systemctl >/dev/null 2>&1; then
+	if [ -d /run/systemd/system ]; then
+		USE_SYSTEMD=1
+	else
+		if systemctl list-units >/dev/null 2>&1; then
+			USE_SYSTEMD=1
+		fi
+	fi
+fi
+if [ "$USE_SYSTEMD" -ne 1 ]; then
+	command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent when systemd is unavailable." >&2; exit 1; }
 fi
 echo "... done."
 
@@ -184,22 +190,21 @@ echo "... done."
 echo "Removing any old hetrixtools cronjob, if exists..."
 if command -v crontab >/dev/null 2>&1
 then
-    crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
-    crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
+	crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
+	crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
 fi
 echo "... done."
 
 # Removing old systemd service/timer (if exists)
-if command -v systemctl >/dev/null 2>&1
-then
+if [ "$USE_SYSTEMD" -eq 1 ]; then
 	systemctl stop hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl disable hetrixtools_agent.timer >/dev/null 2>&1
-	rm -f /etc/systemd/system/hetrixtools_agent.timer
 	systemctl stop hetrixtools_agent.service >/dev/null 2>&1
 	systemctl disable hetrixtools_agent.service >/dev/null 2>&1
-	rm -f /etc/systemd/system/hetrixtools_agent.service
 	systemctl daemon-reload >/dev/null 2>&1
 fi
+rm -f /etc/systemd/system/hetrixtools_agent.timer >/dev/null 2>&1
+rm -f /etc/systemd/system/hetrixtools_agent.service >/dev/null 2>&1
 
 # Setup the new systemd or cronjob timer to run the agent every minute
 if [ "$USE_SYSTEMD" -eq 1 ]
@@ -250,7 +255,7 @@ echo "... done."
 echo "Cleaning up the installation file..."
 if [ -f $0 ]
 then
-    rm -f $0
+	rm -f $0
 fi
 echo "... done."
 
