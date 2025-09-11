@@ -258,7 +258,7 @@ declare -A IOPSWrite
 diskstats=$(cat /proc/diskstats)
 lsblk_mnt_option="MOUNTPOINTS"
 if ! lsblk -l -o NAME,MOUNTPOINTS >/dev/null 2>&1; then
-    lsblk_mnt_option="MOUNTPOINT"
+	lsblk_mnt_option="MOUNTPOINT"
 fi
 lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,${lsblk_mnt_option} 2>/dev/null)
 for i in "${!vDISKs[@]}"

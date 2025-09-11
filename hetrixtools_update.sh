@@ -46,15 +46,17 @@ fi
 # Check if update script is run by root
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
-  then echo "ERROR: Please run the update script as root."
-  exit
+	then echo "ERROR: Please run the update script as root."
+	exit
 fi
 echo "... done."
 
-# Check if system has crontab and wget
-echo "Checking for crontab and wget..."
-command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent." >&2; exit 1; }
+# Check for required system utilities (wget + either systemd or cron)
+echo "Checking system utilities..."
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
+if ! command -v systemctl >/dev/null 2>&1; then
+	command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required when systemd is not available." >&2; exit 1; }
+fi
 echo "... done."
 
 # Look for the old agent
@@ -186,8 +188,8 @@ echo "... done."
 echo "Checking if any custom variables are specified..."
 if [ ! -z "$CustomVars" ]
 then
-    echo "Custom variables found, inserting them into the agent config..."
-    sed -i "s/CustomVars=\"custom_variables.json\"/CustomVars=\"$CustomVars\"/" /etc/hetrixtools/hetrixtools.cfg
+	echo "Custom variables found, inserting them into the agent config..."
+	sed -i "s/CustomVars=\"custom_variables.json\"/CustomVars=\"$CustomVars\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -195,8 +197,8 @@ echo "... done."
 echo "Checking if secured connection is enabled..."
 if [ ! -z "$SecuredConnection" ]
 then
-    echo "Inserting secured connection in the agent config..."
-    sed -i "s/SecuredConnection=1/SecuredConnection=$SecuredConnection/" /etc/hetrixtools/hetrixtools.cfg
+	echo "Inserting secured connection in the agent config..."
+	sed -i "s/SecuredConnection=1/SecuredConnection=$SecuredConnection/" /etc/hetrixtools/hetrixtools.cfg
 fi
 echo "... done."
 
@@ -241,10 +243,9 @@ fi
 echo "Cleaning up the update file..."
 if [ -f $0 ]
 then
-    rm -f $0
+	rm -f $0
 fi
 echo "... done."
 
 # All done
 echo "HetrixTools agent update completed. It can take up to two (2) minutes for new data to be collected."
-

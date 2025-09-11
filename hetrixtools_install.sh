@@ -182,12 +182,15 @@ echo "... done."
 
 # Removing old cronjob (if exists)
 echo "Removing any old hetrixtools cronjob, if exists..."
-crontab -u root -l | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
-crontab -u hetrixtools -l | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
+if command -v crontab >/dev/null 2>&1
+then
+    crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
+    crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
+fi
 echo "... done."
 
 # Removing old systemd service/timer (if exists)
-if [ "$USE_SYSTEMD" -eq 1 ]
+if command -v systemctl >/dev/null 2>&1
 then
 	systemctl stop hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl disable hetrixtools_agent.timer >/dev/null 2>&1
@@ -270,4 +273,3 @@ echo "... done."
 
 # All done
 echo "HetrixTools agent installation completed."
-
