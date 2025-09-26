@@ -4,6 +4,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.2:
+- Add support for HP Smart Array RAID controllers
+
 #### Version 2.3.1:
 - Improved `mdadm` RAID reading
 - Improved auto network detection

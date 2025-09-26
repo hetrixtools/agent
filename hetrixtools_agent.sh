@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.1"
+Version="2.3.2"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -851,120 +851,123 @@ if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DISKs: $DISKs
 DH=""
 if [ "$CheckDriveHealth" -gt 0 ]
 then
-    if [ -x "$(command -v smartctl)" ]
-    then
-        for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
-        do
-            DHealth=$(smartctl -A "$i" 2>/dev/null)
-            if grep -q 'Attribute' <<< "$DHealth"
-            then
-                DHealth=$(smartctl -H "$i")"\n$DHealth"
-                DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-                DInfo="$(smartctl -i "$i")"
-                DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
-                DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
-                i=${i##*/}
-                DH="$DH""1,$i,$DHealth,$DModel,$DSerial;"
-            else
-                MegaRaid=()
-                while IFS='' read -r line; do MegaRaid+=("$line"); done < <(smartctl --scan | grep megaraid | awk '{print $(3)}')
-                if [ ${#MegaRaid[@]} -gt 0 ]
-                then
-                    MegaRaidN=0
-                    for MegaRaidID in "${MegaRaid[@]}"
-                    do
-                        DHealth=$(smartctl -A -d "$MegaRaidID" "$i" 2>/dev/null)
-                        if grep -q 'Attribute' <<< "$DHealth"
-                        then
-                            MegaRaidN=$((MegaRaidN + 1))
-                            DHealth=$(smartctl -H -d "$MegaRaidID" "$i")"\n$DHealth"
-                            DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-                            DInfo="$(smartctl -i -d "$MegaRaidID" "$i")"
-                            DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
-                            DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
-                            ii=${i##*/}
-                            DH="$DH""1,${ii}[$MegaRaidN],$DHealth,$DModel,$DSerial;"
-                        fi
-                    done
-                    break
-                else
-                    HPCCISS=0
-                    if lspci 2>/dev/null | grep -qi 'Smart Array'; then HPCCISS=1; fi
-                    if lsmod 2>/dev/null | grep -qE '^hpsa|^cciss'; then HPCCISS=1; fi
-                    if [ $HPCCISS -eq 1 ]
-                    then
-                        CCISS_MAX=32
-                        if command -v hpssacli >/dev/null 2>&1
-                        then
-                            CCISS_MAX=$(hpssacli ctrl all show config 2>/dev/null | grep -ci '^ *physicaldrive ')
-                            if [ -z "$CCISS_MAX" ] || [ "$CCISS_MAX" -le 0 ]; then CCISS_MAX=32; fi
-                        fi
-                        CCISSN=0
-                        IDX=0
-                        while [ $IDX -lt $CCISS_MAX ]
-                        do
-                            DHealth=$(smartctl -A -d cciss,$IDX "$i" 2>/dev/null)
-                            if grep -q 'Attribute' <<< "$DHealth"
-                            then
-                                CCISSN=$((CCISSN + 1))
-                                DHealth=$(smartctl -H -d cciss,$IDX "$i")"\n$DHealth"
-                                DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-                                DInfo="$(smartctl -i -d cciss,$IDX "$i")"
-                                DModel="$(echo "$DInfo" | grep -i -E 'Device Model:|Model Number:' | head -n1 | awk -F ':' '{print $2}' | xargs)"
-                                DSerial="$(echo "$DInfo" | grep -i 'Serial Number:' | awk -F ':' '{print $2}' | xargs)"
-                                ii=${i##*/}
-                                DH="$DH""1,${ii}[$CCISSN],$DHealth,$DModel,$DSerial;"
-                            fi
-                            IDX=$((IDX + 1))
-                        done
-                        break
-                    fi
-                fi
-            fi
-        done
-    fi
-    if [ -x "$(command -v nvme)" ]
-    then
-        NVMeList="$(nvme list)"
-        NVMeListJ="$(nvme list -o json)"
-        for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
-        do
-            DHealth=$(nvme smart-log "$i" 2>/dev/null)
-            if grep -q 'NVME' <<< "$DHealth"
-            then
-                if [ -x "$(command -v smartctl)" ]
-                then
-                    ii=${i##*/}
-                    DHealth=$(smartctl -H /dev/"${ii%??}")"\n$DHealth"
-                fi
-                DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-                DeviceBlock=$(echo "$NVMeListJ" | awk -v RS='{' -v dev="$i" '$0 ~ dev')
-                DModel=$(echo "$DeviceBlock" | grep '"ModelNumber"' | sed -E 's/.*"ModelNumber"\s*:\s*"([^"]+)".*/\1/')
-                DSerial=$(echo "$DeviceBlock" | grep '"SerialNumber"' | sed -E 's/.*"SerialNumber"\s*:\s*"([^"]+)".*/\1/')
-                DFirmware=$(echo "$DeviceBlock" | grep '"Firmware"' | sed -E 's/.*"Firmware"\s*:\s*"([^"]+)".*/\1/')
-                if [ -z "$DModel" ]
-                then
-                    MODELCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "Model" | cut -d: -f1)
-                    DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$MODELCOL" '{print $col}')"
-                else
-                    if [ -n "$DFirmware" ]
-                    then
-                        DModel="$DModel - $DFirmware"
-                    fi
-                fi
-                if [ -z "$DSerial" ]
-                then
-                    SNCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "SN" | cut -d: -f1)
-                    DSerial="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$SNCOL" '{print $col}')"
-                fi
-                i=${i##*/}
-                DH="$DH""2,$i,$DHealth,$DModel,$DSerial;"
-            fi
-        done
-    fi
+	if [ -x "$(command -v smartctl)" ] #Using S.M.A.R.T. (for regular HDD/SSD)
+	then
+		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
+		do
+			DHealth=$(smartctl -A "$i")
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
+			if grep -q 'Attribute' <<< "$DHealth"
+			then
+				DHealth=$(smartctl -H "$i")"\n$DHealth"
+				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+				DInfo="$(smartctl -i "$i")"
+				DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
+				DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
+				i=${i##*/}
+				DH="$DH""1,$i,$DHealth,$DModel,$DSerial;"
+			else # If initial read has failed, see if drives are behind hardware raid
+				MegaRaid=()
+				while IFS='' read -r line; do MegaRaid+=("$line"); done < <(smartctl --scan | grep megaraid | awk '{print $(3)}')
+				if [ ${#MegaRaid[@]} -gt 0 ]
+				then
+					MegaRaidN=0
+					for MegaRaidID in "${MegaRaid[@]}"
+					do
+						DHealth=$(smartctl -A -d "$MegaRaidID" "$i")
+						if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A -d $MegaRaidID $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
+						if grep -q 'Attribute' <<< "$DHealth"
+						then
+							MegaRaidN=$((MegaRaidN + 1))
+							DHealth=$(smartctl -H -d "$MegaRaidID" "$i")"\n$DHealth"
+							DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+							DInfo="$(smartctl -i -d "$MegaRaidID" "$i")"
+							DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
+							DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
+							ii=${i##*/}
+							DH="$DH""1,${ii}[$MegaRaidN],$DHealth,$DModel,$DSerial;"
+						fi
+					done
+					break
+				else
+					HPCCISS=0
+					if lspci 2>/dev/null | grep -qi 'Smart Array'; then HPCCISS=1; fi
+					if lsmod 2>/dev/null | grep -qE '^hpsa|^cciss'; then HPCCISS=1; fi
+					if [ $HPCCISS -eq 1 ]
+					then
+						CCISS_MAX=32
+						if command -v hpssacli >/dev/null 2>&1
+						then
+							CCISS_MAX=$(hpssacli ctrl all show config 2>/dev/null | grep -ci '^ *physicaldrive ')
+							if [ -z "$CCISS_MAX" ] || [ "$CCISS_MAX" -le 0 ]; then CCISS_MAX=32; fi
+						fi
+						CCISSN=0
+						IDX=0
+						while [ $IDX -lt $CCISS_MAX ]
+						do
+							DHealth=$(smartctl -A -d cciss,$IDX "$i" 2>/dev/null)
+							if grep -q 'Attribute' <<< "$DHealth"
+							then
+								CCISSN=$((CCISSN + 1))
+								DHealth=$(smartctl -H -d cciss,$IDX "$i")"\n$DHealth"
+								DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+								DInfo="$(smartctl -i -d cciss,$IDX "$i")"
+								DModel="$(echo "$DInfo" | grep -i -E 'Device Model:|Model Number:' | head -n1 | awk -F ':' '{print $2}' | xargs)"
+								DSerial="$(echo "$DInfo" | grep -i 'Serial Number:' | awk -F ':' '{print $2}' | xargs)"
+								ii=${i##*/}
+								DH="$DH""1,${ii}[$CCISSN],$DHealth,$DModel,$DSerial;"
+							fi
+							IDX=$((IDX + 1))
+						done
+						break
+					fi
+				fi
+			fi
+		done
+	fi
+	if [ -x "$(command -v nvme)" ] #Using nvme-cli (for NVMe)
+	then
+		NVMeList="$(nvme list)"
+		NVMeListJ="$(nvme list -o json)"
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe List:\n$NVMeList" >> "$ScriptPath"/debug.log; fi
+		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
+		do
+			DHealth=$(nvme smart-log "$i" 2>/dev/null)
+			if grep -q 'NVME' <<< "$DHealth"
+			then
+				if [ -x "$(command -v smartctl)" ]
+				then
+					ii=${i##*/}
+					DHealth=$(smartctl -H /dev/"${ii%??}")"\n$DHealth"
+				fi
+				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+				DeviceBlock=$(echo "$NVMeListJ" | awk -v RS='{' -v dev="$i" '$0 ~ dev')
+				DModel=$(echo "$DeviceBlock" | grep '"ModelNumber"' | sed -E 's/.*"ModelNumber"\s*:\s*"([^"]+)".*/\1/')
+				DSerial=$(echo "$DeviceBlock" | grep '"SerialNumber"' | sed -E 's/.*"SerialNumber"\s*:\s*"([^"]+)".*/\1/')
+				DFirmware=$(echo "$DeviceBlock" | grep '"Firmware"' | sed -E 's/.*"Firmware"\s*:\s*"([^"]+)".*/\1/')
+				if [ -z "$DModel" ]
+				then
+					MODELCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "Model" | cut -d: -f1)
+					DModel="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$MODELCOL" '{print $col}')"
+				else
+					if [ -n "$DFirmware" ]
+					then
+						DModel="$DModel - $DFirmware"
+					fi
+				fi
+				if [ -z "$DSerial" ]
+				then
+					SNCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "SN" | cut -d: -f1)
+					DSerial="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$SNCOL" '{print $col}')"
+				fi
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe $i Model: $DModel Serial: $DSerial" >> "$ScriptPath"/debug.log; fi
+				i=${i##*/}
+				DH="$DH""2,$i,$DHealth,$DModel,$DSerial;"
+			fi
+		done
+	fi
 fi
 DH=$(echo -ne "$DH" | base64 | tr -d '\n\r\t ')
-
 
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DH: $DH" >> "$ScriptPath"/debug.log; fi
 
