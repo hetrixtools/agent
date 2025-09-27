@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.1"
+Version="2.3.2"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -469,10 +469,12 @@ do
 	else
 		if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
 		then
-			SensorsCmd=$(sensors -A 2>/dev/null)
+			SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
 			if [ $? -eq 0 ]
 			then
 				SensorsArray=()
+				SensorsCoreSum=0
+				SensorsCoreCnt=0
 				while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
 				for i in "${SensorsArray[@]}"
 				do
@@ -488,10 +490,23 @@ do
 								TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
 								TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
 								TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+								if [[ "$TempName" == *"|Core_"* ]]
+								then
+									SensorsCoreSum=$((SensorsCoreSum + TempVal))
+									SensorsCoreCnt=$((SensorsCoreCnt + 1))
+								fi
 							fi
 						fi
 					fi
 				done
+				if [ "$SensorsCoreCnt" -gt 0 ]
+				then
+					SensorAvgName="AllCoreAvg"
+					TempArray[$SensorAvgName]=${TempArray[$SensorAvgName]:-0}
+					TempArrayCnt[$SensorAvgName]=${TempArrayCnt[$SensorAvgName]:-0}
+					TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
+					TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
+				fi
 				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 			else
 				SensorsCmdDisable=1
@@ -889,6 +904,38 @@ then
 						fi
 					done
 					break
+				else
+					HPCCISS=0
+					if lspci 2>/dev/null | grep -qi 'Smart Array'; then HPCCISS=1; fi
+					if lsmod 2>/dev/null | grep -qE '^hpsa|^cciss'; then HPCCISS=1; fi
+					if [ $HPCCISS -eq 1 ]
+					then
+						CCISS_MAX=32
+						if command -v hpssacli >/dev/null 2>&1
+						then
+							CCISS_MAX=$(hpssacli ctrl all show config 2>/dev/null | grep -ci '^[[:space:]]*physicaldrive ')
+							if [ -z "$CCISS_MAX" ] || [ "$CCISS_MAX" -le 0 ]; then CCISS_MAX=32; fi
+						fi
+						CCISSN=0
+						IDX=0
+						while [ $IDX -lt $CCISS_MAX ]
+						do
+							DHealth=$(smartctl -A -d cciss,$IDX "$i" 2>/dev/null)
+							if grep -q 'Attribute' <<< "$DHealth"
+							then
+								CCISSN=$((CCISSN + 1))
+								DHealth=$(smartctl -H -d cciss,$IDX "$i")"\n$DHealth"
+								DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+								DInfo="$(smartctl -i -d cciss,$IDX "$i")"
+								DModel="$(echo "$DInfo" | grep -i -E 'Device Model:|Model Number:' | head -n1 | awk -F ':' '{print $2}' | xargs)"
+								DSerial="$(echo "$DInfo" | grep -i 'Serial Number:' | awk -F ':' '{print $2}' | xargs)"
+								ii=${i##*/}
+								DH="$DH""1,${ii}[$CCISSN],$DHealth,$DModel,$DSerial;"
+							fi
+							IDX=$((IDX + 1))
+						done
+						break
+					fi
 				fi
 			fi
 		done
