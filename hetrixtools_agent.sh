@@ -469,10 +469,12 @@ do
 	else
 		if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
 		then
-			SensorsCmd=$(sensors -A 2>/dev/null)
+			SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
 			if [ $? -eq 0 ]
 			then
 				SensorsArray=()
+				SensorsCoreSum=0
+				SensorsCoreCnt=0
 				while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
 				for i in "${SensorsArray[@]}"
 				do
@@ -488,10 +490,23 @@ do
 								TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
 								TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
 								TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+								if [[ "$TempName" == *"|Core_"* ]]
+								then
+									SensorsCoreSum=$((SensorsCoreSum + TempVal))
+									SensorsCoreCnt=$((SensorsCoreCnt + 1))
+								fi
 							fi
 						fi
 					fi
 				done
+				if [ "$SensorsCoreCnt" -gt 0 ]
+				then
+					SensorAvgName="AllCoreAvg"
+					TempArray[$SensorAvgName]=${TempArray[$SensorAvgName]:-0}
+					TempArrayCnt[$SensorAvgName]=${TempArrayCnt[$SensorAvgName]:-0}
+					TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
+					TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
+				fi
 				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 			else
 				SensorsCmdDisable=1
@@ -898,7 +913,7 @@ then
 						CCISS_MAX=32
 						if command -v hpssacli >/dev/null 2>&1
 						then
-							CCISS_MAX=$(hpssacli ctrl all show config 2>/dev/null | grep -ci '^ *physicaldrive ')
+							CCISS_MAX=$(hpssacli ctrl all show config 2>/dev/null | grep -ci '^[[:space:]]*physicaldrive ')
 							if [ -z "$CCISS_MAX" ] || [ "$CCISS_MAX" -le 0 ]; then CCISS_MAX=32; fi
 						fi
 						CCISSN=0

@@ -6,6 +6,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 #### Version 2.3.2:
 - Add support for HP Smart Array RAID controllers
+- Fixed an issue where, in some cases, CPU temperature wasn't being read properly
 
 #### Version 2.3.1:
 - Improved `mdadm` RAID reading
@@ -28,7 +29,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 - Fixed an issue where, in some cases, `zpool` metrics weren't being registered properly
 
 #### Version 2.2.10:
-- Fixed an issue where, in some cases, the Temperature collection would interrupt the metrics collection loop
+- Fixed an issue where, in some cases, the CPU temperature collection would interrupt the metrics collection loop
 
 #### Version 2.2.9:
 - Fixed an issue where, in some cases, NVMe disk Serial and Model were not detected properly
