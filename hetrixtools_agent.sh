@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.2"
+Version="2.3.3"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -80,12 +80,12 @@ function base64prep() {
 function pingstatus() {
 	local TargetName=$1
 	local PingTarget=$2
-	if ! [[ "$TargetName" =~ ^[a-zA-Z0-9\.\-_]+$ ]]
+	if ! [[ "$TargetName" =~ ^[A-Za-z0-9._-]+$ ]]
 	then
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target name value" >> "$ScriptPath"/debug.log; fi
 		exit 1
 	fi
-	if ! [[ "$PingTarget" =~ ^[a-zA-Z0-9\.\-:]+$ ]]
+	if ! [[ "$PingTarget" =~ ^[A-Za-z0-9.:_-]+$ ]]
 	then
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target value" >> "$ScriptPath"/debug.log; fi
 		exit 1
@@ -119,6 +119,7 @@ function pingstatus() {
 # Check if the agent needs to run Outgoing PING tests
 if [ "$1" == "ping" ]
 then
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Starting PING: $2 ($3) $OutgoingPingsCount times" >> "$ScriptPath"/debug.log; fi
 	pingstatus "$2" "$3"
 	exit 1
 fi
