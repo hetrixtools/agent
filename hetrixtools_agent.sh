@@ -248,7 +248,12 @@ fi
 
 # Disks IOPS
 declare -A vDISKs
-for i in $(timeout 3 df | awk '$1 ~ /\// {print}' | awk '{print $(NF)}')
+df_mount_output=$(timeout 3 df 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$df_mount_output" ]
+then
+	df_mount_output=$(timeout 3 df -l 2>/dev/null)
+fi
+for i in $(echo "$df_mount_output" | awk '$1 ~ /\// {print $(NF)}')
 do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
@@ -467,72 +472,72 @@ do
 			TempNameCnt=$((TempNameCnt + 1))
 		done
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
-	else
-		if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
+	fi
+
+	if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
+	then
+		SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
+		if [ $? -eq 0 ]
 		then
-			SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
-			if [ $? -eq 0 ]
-			then
-				SensorsArray=()
-				SensorsCoreSum=0
-				SensorsCoreCnt=0
-				while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
-				for i in "${SensorsArray[@]}"
-				do
-					if [ -n "$i" ]
+			SensorsArray=()
+			SensorsCoreSum=0
+			SensorsCoreCnt=0
+			while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
+			for i in "${SensorsArray[@]}"
+			do
+				if [ -n "$i" ]
+				then
+					if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
 					then
-						if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
+						SensorsCat="$i"
+					else
+						if [[ "$i" == *":"* ]] && [[ "$i" == *"°C"* ]]
 						then
-							SensorsCat="$i"
-						else
-							if [[ "$i" == *":"* ]] && [[ "$i" == *"°C"* ]]
+							TempName="$SensorsCat|"$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $1}' | sed 's/ /_/g' | xargs)
+							TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
+							TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
+							TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+							if [[ "$TempName" == *"|Core_"* ]]
 							then
-								TempName="$SensorsCat|"$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $1}' | sed 's/ /_/g' | xargs)
-								TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
-								TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
-								TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
-								if [[ "$TempName" == *"|Core_"* ]]
-								then
-									SensorsCoreSum=$((SensorsCoreSum + TempVal))
-									SensorsCoreCnt=$((SensorsCoreCnt + 1))
-								fi
+								SensorsCoreSum=$((SensorsCoreSum + TempVal))
+								SensorsCoreCnt=$((SensorsCoreCnt + 1))
 							fi
 						fi
 					fi
-				done
-				if [ "$SensorsCoreCnt" -gt 0 ]
-				then
-					SensorAvgName="AllCoreAvg"
-					TempArray[$SensorAvgName]=${TempArray[$SensorAvgName]:-0}
-					TempArrayCnt[$SensorAvgName]=${TempArrayCnt[$SensorAvgName]:-0}
-					TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
-					TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
 				fi
-				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
-			else
-				SensorsCmdDisable=1
-				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
-			fi
-		else
-			if command -v "ipmitool" > /dev/null 2>&1
+			done
+			if [ "$SensorsCoreCnt" -gt 0 ]
 			then
-				IPMIArray=()
-				while IFS='' read -r line; do IPMIArray+=("$line"); done < <(timeout -s 9 3 ipmitool sdr type Temperature)
-				for i in "${IPMIArray[@]}"
-				do
-					if [ -n "$i" ]
-					then
-						if [[ "$i" == *"degrees"* ]]
-						then
-							TempName=$(echo "$i" | awk -F"|" '{print $1}' | xargs | sed 's/ /_/g')
-							TempVal=$(echo "$i" | awk -F"|" '{print $NF}' | awk -F"degrees" '{print $1}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
-							TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
-							TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
-						fi
-					fi
-				done
-				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+				SensorAvgName="AllCoreAvg"
+				TempArray[$SensorAvgName]=${TempArray[$SensorAvgName]:-0}
+				TempArrayCnt[$SensorAvgName]=${TempArrayCnt[$SensorAvgName]:-0}
+				TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
+				TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
 			fi
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+		else
+			SensorsCmdDisable=1
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
+		fi
+	else
+		if command -v "ipmitool" > /dev/null 2>&1
+		then
+			IPMIArray=()
+			while IFS='' read -r line; do IPMIArray+=("$line"); done < <(timeout -s 9 3 ipmitool sdr type Temperature)
+			for i in "${IPMIArray[@]}"
+			do
+				if [ -n "$i" ]
+				then
+					if [[ "$i" == *"degrees"* ]]
+					then
+						TempName=$(echo "$i" | awk -F"|" '{print $1}' | xargs | sed 's/ /_/g')
+						TempVal=$(echo "$i" | awk -F"|" '{print $NF}' | awk -F"degrees" '{print $1}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
+						TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
+						TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+					fi
+				fi
+			done
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 		fi
 	fi
 	
@@ -674,7 +679,12 @@ RAMCache=$(echo | awk "{print $tRAMCache / $X}")
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAM Size: $RAMSize Usage: $RAM Swap Size: $RAMSwapSize Usage: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache" >> "$ScriptPath"/debug.log; fi
 
 # Disks inodes
-INODEs=$(echo -ne "$(timeout 3 df -Ti | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
+df_inodes_output=$(timeout 3 df -Ti 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$df_inodes_output" ]
+then
+	df_inodes_output=$(timeout 3 df -l -Ti 2>/dev/null)
+fi
+INODEs=$(echo -ne "$(echo "$df_inodes_output" | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
 
 # Disks IOPS
 IOPS=""
@@ -790,6 +800,10 @@ if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Services: $SR
 RAID=""
 ZP=""
 dfPB1=$(timeout 3 df -PB1 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$dfPB1" ]
+then
+	dfPB1=$(timeout 3 df -l -PB1 2>/dev/null)
+fi
 mdstat=$(cat /proc/mdstat 2>/dev/null)
 declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
@@ -846,7 +860,12 @@ if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAID: $RAID Z
 
 # Disks usage
 DISKs=""
-IFS=$'\n' read -d '' -r -a DISKsArray < <(timeout 3 df -TPB1 | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')
+df_disk_usage=$(timeout 3 df -TPB1 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$df_disk_usage" ]
+then
+	df_disk_usage=$(timeout 3 df -l -TPB1 2>/dev/null)
+fi
+IFS=$'\n' read -d '' -r -a DISKsArray < <(printf '%s\n' "$df_disk_usage" | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')
 for i in "${DISKsArray[@]}"
 do
 	IFS=',' read -r mount_point filesystem_type total_size used_size available_size <<< "$i"

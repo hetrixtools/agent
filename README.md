@@ -5,6 +5,8 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 ### Changelog
 
 #### Version 2.3.3:
+- Improved CPU temperature collection method
+- Improved disk metrics collection method
 - Fixed an issue with Outgoing Pings validation
 
 #### Version 2.3.2:
