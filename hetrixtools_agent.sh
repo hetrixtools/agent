@@ -216,6 +216,30 @@ do
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interface $NIC RX: ${aRX[$NIC]} TX: ${aTX[$NIC]}" >> "$ScriptPath"/debug.log; fi
 done
 
+AutoDetectedPorts=()
+if [ -z "${ConnectionPorts// }" ]
+then
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Detecting external connection ports" >> "$ScriptPath"/debug.log; fi
+	if command -v "ss" > /dev/null 2>&1
+	then
+		mapfile -t AutoDetectedPorts < <(ss -Htnl 2>/dev/null | awk '{print $4}' | grep -E ':[0-9]+$' | grep -Ev '^(127\.|::1|\[::1\])' | grep -Ev '\[?fe80:' | sed -E 's/.*:([0-9]+)$/\1/' | grep -E '^[0-9]+$' | sort -n | uniq)
+	elif command -v "netstat" > /dev/null 2>&1
+	then
+		mapfile -t AutoDetectedPorts < <(netstat -tnl 2>/dev/null | awk 'NR>2 {print $4}' | grep -E ':[0-9]+$' | grep -Ev '^(127\.|::1|\[::1\])' | grep -Ev '\[?fe80:' | sed -E 's/.*:([0-9]+)$/\1/' | grep -E '^[0-9]+$' | sort -n | uniq)
+	fi
+	if [ ${#AutoDetectedPorts[@]} -gt 30 ]
+	then
+		AutoDetectedPorts=("${AutoDetectedPorts[@]:0:30}")
+	fi
+	if [ ${#AutoDetectedPorts[@]} -gt 0 ]
+	then
+		ConnectionPorts=$(IFS=','; printf '%s' "${AutoDetectedPorts[*]}")
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Auto detected connection ports: ${AutoDetectedPorts[*]}" >> "$ScriptPath"/debug.log; fi
+	else
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) No external connection ports detected" >> "$ScriptPath"/debug.log; fi
+	fi
+fi
+
 # Port connections
 if [ -n "$ConnectionPorts" ]
 then
