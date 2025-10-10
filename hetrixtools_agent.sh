@@ -245,10 +245,18 @@ if [ -n "$ConnectionPorts" ]
 then
 	IFS=',' read -r -a ConnectionPortsArray <<< "$ConnectionPorts"
 	declare -A Connections
-	netstat=$(ss -ntu | awk '{print $5}')
+	if command -v "ss" > /dev/null 2>&1
+	then
+		ConnectionPeers=$(ss -ntu | awk '{print $5}')
+	elif command -v "netstat" > /dev/null 2>&1
+	then
+		ConnectionPeers=$(netstat -ntu | grep "ESTABLISHED" 2>/dev/null | awk 'NR>2 {print $4}')
+	else
+		ConnectionPeers=""
+	fi
 	for cPort in "${ConnectionPortsArray[@]}"
 	do
-		Connections[$cPort]=$(echo "$netstat" | grep -c ":$cPort$")
+		Connections[$cPort]=$(echo "$ConnectionPeers" | grep -c ":$cPort$")
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Port $cPort Connections: ${Connections[$cPort]}" >> "$ScriptPath"/debug.log; fi
 	done
 fi
@@ -503,6 +511,7 @@ do
 		SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
 		if [ $? -eq 0 ]
 		then
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Sensors command output:\n$SensorsCmd" >> "$ScriptPath"/debug.log; fi
 			SensorsArray=()
 			SensorsCoreSum=0
 			SensorsCoreCnt=0
@@ -513,18 +522,25 @@ do
 				then
 					if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
 					then
-						SensorsCat="$i"
+						SensorsCat=$(echo "$i" | xargs)
 					else
-						if [[ "$i" == *":"* ]] && [[ "$i" == *"°C"* ]]
+						if [[ "$i" == *":"* ]]
 						then
-							TempName="$SensorsCat|"$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $1}' | sed 's/ /_/g' | xargs)
-							TempVal=$(echo "$i" | awk -F"°C" '{print $1}' | awk -F":" '{print $2}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
-							TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
-							TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
-							if [[ "$TempName" == *"|Core_"* ]]
+							TempLabel=$(echo "$i" | awk -F":" '{print $1}' | xargs | sed 's/ /_/g')
+							TempRaw=$(echo "$i" | awk -F":" '{print $2}' | grep -oE '[-+]?[0-9]+(\.[0-9]+)?' | head -n 1)
+							if [ -n "$TempRaw" ]
 							then
-								SensorsCoreSum=$((SensorsCoreSum + TempVal))
-								SensorsCoreCnt=$((SensorsCoreCnt + 1))
+								TempName="$SensorsCat|$TempLabel"
+								TempVal=$(awk -v val="$TempRaw" 'BEGIN { printf "%18.3f", val }' | sed 's/\.//g' | xargs)
+								TempArray[$TempName]=${TempArray[$TempName]:-0}
+								TempArray[$TempName]=$((TempArray[$TempName] + TempVal))
+								TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
+								TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+								if [[ "$TempName" == *"|Core_"* ]]
+								then
+									SensorsCoreSum=$((SensorsCoreSum + TempVal))
+									SensorsCoreCnt=$((SensorsCoreCnt + 1))
+								fi
 							fi
 						fi
 					fi
