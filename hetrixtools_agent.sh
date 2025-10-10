@@ -197,7 +197,7 @@ then
 else
 	# Automatically detect the network interfaces
 	NetworkInterfacesArray=()
-	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | grep -v ' master ' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
+	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | grep -v 'SLAVE' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
 fi
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interfaces: ${NetworkInterfacesArray[*]}" >> "$ScriptPath"/debug.log; fi
 
@@ -886,7 +886,7 @@ then
 			do
 				zpoolstatus=$(zpool status "$i" 2>/dev/null)
 				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | tr -d '\n\r\t ')
-				mnt=$(echo -ne "$dfPB1" | grep -E "$i[ /]" | head -n 1 | awk '{print $(NF)}')
+				mnt=$(echo -ne "$dfPB1" | grep -E "${i}[ /]" | head -n 1 | awk '{print $(NF)}')
 				ZP="$ZP$mnt,$i,$zpoolstatus;"
 				zpooldiskusage[$mnt]=$(zfs get -H -o value -p used,avail "$i" | xargs | awk '{printf "%.0f %.0f %.0f", $1+$2, $1, $2}')
 			done
