@@ -4,6 +4,12 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.3:
+- Implemented automatic ports detection if no ports specified in `hetrixtools.cfg`
+- Improved CPU temperature collection method
+- Improved disk metrics collection method
+- Fixed an issue with Outgoing Pings validation
+
 #### Version 2.3.2:
 - Add support for HP Smart Array RAID controllers
 - Fixed an issue where, in some cases, CPU temperature wasn't being read properly
