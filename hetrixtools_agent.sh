@@ -468,7 +468,7 @@ do
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Port Connections: ${Connections[*]}" >> "$ScriptPath"/debug.log; fi
 	fi
 
-	# Temperature
+	# Temperature (thermal_zone)
 	if [ "$(find /sys/class/thermal/thermal_zone*/type 2> /dev/null | wc -l)" -gt 0 ]
 	then
 		TempArrayIndex=()
@@ -506,6 +506,7 @@ do
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 	fi
 
+	# Temperature (sensors)
 	if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
 	then
 		SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
@@ -559,28 +560,8 @@ do
 			SensorsCmdDisable=1
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
 		fi
-	else
-		if command -v "ipmitool" > /dev/null 2>&1
-		then
-			IPMIArray=()
-			while IFS='' read -r line; do IPMIArray+=("$line"); done < <(timeout -s 9 3 ipmitool sdr type Temperature)
-			for i in "${IPMIArray[@]}"
-			do
-				if [ -n "$i" ]
-				then
-					if [[ "$i" == *"degrees"* ]]
-					then
-						TempName=$(echo "$i" | awk -F"|" '{print $1}' | xargs | sed 's/ /_/g')
-						TempVal=$(echo "$i" | awk -F"|" '{print $NF}' | awk -F"degrees" '{print $1}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
-						TempArray[$TempName]=$((${TempArray[$TempName]} + TempVal))
-						TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
-					fi
-				fi
-			done
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
-		fi
 	fi
-	
+
 	# Check if minute changed, so we can end the loop
 	MM=$(date +%M | sed 's/^0*//')
 	if [ -z "$MM" ]
@@ -593,6 +574,29 @@ do
 		break
 	fi
 done
+
+# Temperature (ipmitool) - just once due to slowness
+if command -v "ipmitool" > /dev/null 2>&1
+then
+	IPMIArray=()
+	while IFS='' read -r line; do IPMIArray+=("$line"); done < <(timeout -s 9 5 ipmitool sdr type Temperature)
+	for i in "${IPMIArray[@]}"
+	do
+		if [ -n "$i" ]
+		then
+			if [[ "$i" == *"degrees"* ]]
+			then
+				TempName=$(echo "$i" | awk -F"|" '{print $1}' | xargs | sed 's/ /_/g')
+				TempVal=$(echo "$i" | awk -F"|" '{print $NF}' | awk -F"degrees" '{print $1}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
+				TempArray[$TempName]=${TempArray[$TempName]:-0}
+				TempArray[$TempName]=$((TempArray[$TempName] + TempVal))
+				TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
+				TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+			fi
+		fi
+	done
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+fi
 
 # Get user running the agent
 User=$(whoami)
@@ -844,7 +848,6 @@ if [ $? -ne 0 ] || [ -z "$dfPB1" ]
 then
 	dfPB1=$(timeout 3 df -l -PB1 2>/dev/null)
 fi
-mdstat=$(cat /proc/mdstat 2>/dev/null)
 declare -A zpooldiskusage
 if [ "$CheckSoftRAID" -gt 0 ]
 then
