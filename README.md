@@ -4,6 +4,10 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.4:
+- Improved Software RAID detection
+- Fixed timeout wrong value
+
 #### Version 2.3.3:
 - Implemented automatic ports detection if no ports specified in `hetrixtools.cfg`
 - Improved CPU temperature collection method

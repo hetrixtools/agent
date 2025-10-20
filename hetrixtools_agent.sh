@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.3"
+Version="2.3.4"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -342,7 +342,7 @@ then
 			pipe=$(mktemp -u)
 			mkfifo "$pipe"
 			pipes[$pool]="$pipe"
-			timeout 60 zpool iostat -v -p "$pool" "$remaining_seconds" 2 | awk 'BEGIN{found=0} /capacity/ {found++} found==2' | grep "$pool" > "$pipe" &
+			timeout 3 zpool iostat -v -p "$pool" "$remaining_seconds" 2 | awk 'BEGIN{found=0} /capacity/ {found++} found==2' | grep "$pool" > "$pipe" &
 			pids[$pool]=$!
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool mounted at ${zpools_mountpoints[$pool]} starting iostat pid ${pids[$pool]} pipe ${pipes[$pool]} for $remaining_seconds seconds" >> "$ScriptPath"/debug.log; fi
 		done
@@ -866,7 +866,13 @@ then
 		then
 			mnt=$(findmnt -rn -S "$mddev" -o TARGET 2>/dev/null | head -n1)
 			if [ -z "$mnt" ]; then
-				mnt=$(lsblk -nrpo NAME,${lsblk_mnt_option} "$mddev" 2>/dev/null | awk '$2!=""{print $2}' | awk '{print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
+				lsblk_mounts=$(lsblk -nrpo NAME,${lsblk_mnt_option} "$mddev" 2>/dev/null | awk '$2!=""{print $2}')
+				if [ -n "$lsblk_mounts" ]; then
+					mnt=$(printf '%s\n' "$lsblk_mounts" | awk '/^\// {print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
+					if [ -z "$mnt" ]; then
+						mnt=$(printf '%s\n' "$lsblk_mounts" | awk '{print length, $0}' | sort -n | awk '{print $2}' | tail -n1)
+					fi
+				fi
 			fi
 			# DEBUG
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) md $mddev -> chosen mountpoint: ${mnt:--}" >> "$ScriptPath"/debug.log; fi
