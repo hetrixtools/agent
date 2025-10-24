@@ -21,6 +21,19 @@
 # Set PATH
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# Prefer IPv4 when fetching from GitHub, fallback to IPv6 if needed
+github_wget() {
+	local url=${!#}
+	if ! wget -4 "$@"; then
+		echo "IPv4 request failed for $url, retrying with IPv6..."
+		if ! wget -6 "$@"; then
+			echo "ERROR: Unable to fetch $url via IPv4 or IPv6." >&2
+			return 1
+		fi
+	fi
+	return 0
+}
+
 # Branch
 BRANCH="master"
 
@@ -40,7 +53,7 @@ fi
 echo "... done."
 
 # Check if the selected branch exists
-if wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+if github_wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
 then
 	echo "Installing from $BRANCH branch..."
 else
@@ -101,12 +114,20 @@ echo "... done."
 
 # Fetching the agent
 echo "Fetching the agent..."
-wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+if ! github_wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools_agent.sh https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+then
+	echo "ERROR: Failed to download the agent script from GitHub." >&2
+	exit 1
+fi
 echo "... done."
 
 # Fetching the config file
 echo "Fetching the config file..."
-wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools.cfg https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools.cfg
+if ! github_wget -t 1 -T 30 -qO /etc/hetrixtools/hetrixtools.cfg https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools.cfg
+then
+	echo "ERROR: Failed to download the agent configuration from GitHub." >&2
+	exit 1
+fi
 echo "... done."
 
 # Inserting Server ID (SID) into the agent config
