@@ -251,8 +251,12 @@ EOF
 Description=Runs HetrixTools agent every minute
 
 [Timer]
-OnCalendar=*-*-* *:*:00
+OnBootSec=1min
+OnCalendar=*-*-* *:*:00 UTC
+AccuracySec=1s
+RandomizedDelaySec=0
 Persistent=true
+Unit=hetrixtools_agent.service
 
 [Install]
 WantedBy=timers.target

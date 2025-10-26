@@ -247,6 +247,40 @@ then
 	sed -i "s/OutgoingPingsCount=20/OutgoingPingsCount=$OutgoingPingsCount/" /etc/hetrixtools/hetrixtools.cfg
 fi
 
+# Refresh systemd timer configuration (if systemd is in use and timer exists)
+if command -v systemctl >/dev/null 2>&1 && [ -f /etc/systemd/system/hetrixtools_agent.timer ]
+then
+	echo "Updating systemd service and timer schedule..."
+	SERVICE_USER=$(stat -c '%U' /etc/hetrixtools/hetrixtools_agent.sh 2>/dev/null || echo root)
+cat > /etc/systemd/system/hetrixtools_agent.service <<EOF
+[Unit]
+Description=HetrixTools Agent
+
+[Service]
+Type=oneshot
+User=$SERVICE_USER
+ExecStart=/bin/bash /etc/hetrixtools/hetrixtools_agent.sh
+EOF
+	cat > /etc/systemd/system/hetrixtools_agent.timer <<EOF
+[Unit]
+Description=Runs HetrixTools agent every minute
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*-*-* *:*:00 UTC
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=hetrixtools_agent.service
+
+[Install]
+WantedBy=timers.target
+EOF
+	systemctl daemon-reload >/dev/null 2>&1
+	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
+	echo "... done."
+fi
+
 # Killing any running hetrixtools agents
 echo "Making sure no hetrixtools agent scripts are currently running..."
 ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs -r kill -9

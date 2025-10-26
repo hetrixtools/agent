@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.4"
+Version="2.3.5"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -909,6 +909,7 @@ if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAID: $RAID Z
 
 # Disks usage
 DISKs=""
+declare -A ProcessedMountPoints
 df_disk_usage=$(timeout 3 df -TPB1 2>/dev/null)
 if [ $? -ne 0 ] || [ -z "$df_disk_usage" ]
 then
@@ -925,8 +926,77 @@ do
 		used_size=$zpool_allocated
 		available_size=$zpool_free
 	fi
+	ProcessedMountPoints[$mount_point]=1
 	DISKs="$DISKs$mount_point,$filesystem_type,$total_size,$used_size,$available_size;"
 done
+
+# Include thin LVM pools without mountpoints
+if [ -x "$(command -v lvs)" ]
+then
+	while IFS=',' read -r lv_name vg_name lv_path lv_attr lv_size data_percent lv_tags
+	do
+		lv_name=$(echo "$lv_name" | xargs)
+		vg_name=$(echo "$vg_name" | xargs)
+		lv_path=$(echo "$lv_path" | xargs)
+		lv_attr=$(echo "$lv_attr" | xargs)
+		lv_size=$(echo "$lv_size" | xargs)
+		data_percent=$(echo "$data_percent" | xargs)
+		lv_tags=$(echo "$lv_tags" | xargs)
+
+		if [ -z "$lv_name" ] || [ -z "$vg_name" ] || [ -z "$lv_attr" ] || [ -z "$lv_size" ]
+		then
+			continue
+		fi
+		
+		if [[ "$lv_attr" != t* ]] || [[ "$lv_name" == *_tdata ]] || [[ "$lv_name" == *_tmeta ]]
+		then
+			continue
+		fi
+
+		if [ -z "$lv_path" ]
+		then
+			lv_path="/dev/$vg_name/$lv_name"
+		fi
+		if findmnt -rn -S "$lv_path" >/dev/null 2>&1
+		then
+			continue
+		fi
+
+		pseudo_tag=$(echo "$lv_tags" | tr ',' '\n' | tr -d ' ' | grep -E '^[A-Za-z0-9._-]+$' | head -n1)
+		if [ -n "$pseudo_tag" ]
+		then
+			mount_point="/$pseudo_tag"
+		else
+			mount_point="/$lv_name"
+		fi
+		if [ -n "${ProcessedMountPoints[$mount_point]}" ]
+		then
+			continue
+		fi
+
+		if ! [[ "$lv_size" =~ ^[0-9]+$ ]]
+		then
+			continue
+		fi
+
+		if ! [[ "$data_percent" =~ ^[0-9.]+$ ]]
+		then
+			data_percent="0"
+		fi
+
+		used_size=$(awk -v size="$lv_size" -v pct="$data_percent" 'BEGIN {printf "%.0f", size * pct / 100}')
+		available_size=$(( lv_size - used_size ))
+		if [ "$available_size" -lt 0 ]
+		then
+			available_size=0
+		fi
+
+		ProcessedMountPoints[$mount_point]=1
+		DISKs="$DISKs$mount_point,lvm,$lv_size,$used_size,$available_size;"
+
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Added thin LVM pool $lv_path as $mount_point Size: $lv_size Used: $used_size Free: $available_size" >> "$ScriptPath"/debug.log; fi
+	done < <(lvs --noheadings --separator ',' --units B --nosuffix -o lv_name,vg_name,lv_path,lv_attr,lv_size,data_percent,lv_tags 2>/dev/null)
+fi
 DISKs=$(echo -ne "$DISKs" | base64 | tr -d '\n\r\t ')
 
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DISKs: $DISKs" >> "$ScriptPath"/debug.log; fi
