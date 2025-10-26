@@ -4,6 +4,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.5:
+- Improved `systemctl` running schedule
+
 #### Version 2.3.4:
 - Improved Software RAID detection
 
