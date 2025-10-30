@@ -4,6 +4,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.6:
+- Improved thin LVM monitoring to detect underlying RAID (if exists)
+
 #### Version 2.3.5:
 - Improved disk monitoring to include thin LVM
 - Improved `systemctl` running schedule

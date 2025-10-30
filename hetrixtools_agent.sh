@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.5"
+Version="2.3.6"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -902,14 +902,11 @@ then
 		fi
 	fi
 fi
-RAID=$(echo -ne "$RAID" | base64 | tr -d '\n\r\t ')
-ZP=$(echo -ne "$ZP" | base64 | tr -d '\n\r\t ')
-
-if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAID: $RAID ZP: $ZP" >> "$ScriptPath"/debug.log; fi
-
 # Disks usage
 DISKs=""
 declare -A ProcessedMountPoints
+declare -A ProcessedThinRaid
+declare -A VGSoftRaidMap
 df_disk_usage=$(timeout 3 df -TPB1 2>/dev/null)
 if [ $? -ne 0 ] || [ -z "$df_disk_usage" ]
 then
@@ -931,6 +928,38 @@ do
 done
 
 # Include thin LVM pools without mountpoints
+if [ "$CheckSoftRAID" -gt 0 ] && [ -x "$(command -v pvs)" ]
+then
+	while IFS=',' read -r pv_name vg_name_pv
+	do
+		pv_name=$(echo "$pv_name" | xargs)
+		vg_name_pv=$(echo "$vg_name_pv" | xargs)
+
+		if [ -z "$pv_name" ] || [ -z "$vg_name_pv" ]
+		then
+			continue
+		fi
+
+		if [[ "$pv_name" != /dev/* ]]
+		then
+			pv_name="/dev/$pv_name"
+		fi
+
+		if [[ "$pv_name" =~ ^/dev/md[0-9]+$ ]]
+		then
+			if [ -n "${VGSoftRaidMap[$vg_name_pv]}" ]
+			then
+				case " ${VGSoftRaidMap[$vg_name_pv]} " in
+					*" $pv_name "*) : ;;
+					*) VGSoftRaidMap[$vg_name_pv]="${VGSoftRaidMap[$vg_name_pv]} $pv_name" ;;
+				esac
+			else
+				VGSoftRaidMap[$vg_name_pv]="$pv_name"
+			fi
+		fi
+	done < <(pvs --noheadings --separator ',' -o pv_name,vg_name 2>/dev/null)
+fi
+
 if [ -x "$(command -v lvs)" ]
 then
 	while IFS=',' read -r lv_name vg_name lv_path lv_attr lv_size data_percent lv_tags
@@ -994,9 +1023,101 @@ then
 		ProcessedMountPoints[$mount_point]=1
 		DISKs="$DISKs$mount_point,lvm,$lv_size,$used_size,$available_size;"
 
+		if [ "$CheckSoftRAID" -gt 0 ]
+		then
+			declare -A ThinPoolCandidates=()
+
+			if [ -n "${VGSoftRaidMap[$vg_name]}" ]
+			then
+				for md_candidate in ${VGSoftRaidMap[$vg_name]}
+				do
+					if [ -n "$md_candidate" ]
+					then
+						ThinPoolCandidates["$md_candidate"]=1
+					fi
+				done
+			fi
+
+			lv_devices_output=$(lvs --noheadings -o devices "$lv_path" 2>/dev/null | tr -d ' ')
+			if [ -n "$lv_devices_output" ]
+			then
+				IFS=',' read -r -a lv_devices_array <<< "$lv_devices_output"
+				for device_entry in "${lv_devices_array[@]}"
+				do
+					device_entry=${device_entry%%(*}
+					if [ -z "$device_entry" ]
+					then
+						continue
+					fi
+					if [[ "$device_entry" != /dev/* ]]
+					then
+						device_entry="/dev/$device_entry"
+					fi
+					if [[ "$device_entry" =~ ^/dev/md[0-9]+$ ]]
+					then
+						ThinPoolCandidates["$device_entry"]=1
+					fi
+				done
+			fi
+
+			if [ "${#ThinPoolCandidates[@]}" -eq 0 ]
+			then
+				while IFS=' ' read -r raid_device raid_type raid_parent
+				do
+					if [[ -z "$raid_device" ]] || [[ "$raid_device" == "$lv_path" ]]
+					then
+						continue
+					fi
+
+					normalized_device="$raid_device"
+					if [[ "$normalized_device" != /dev/* ]]
+					then
+						normalized_device="/dev/$normalized_device"
+					fi
+
+					if [[ "$normalized_device" =~ ^/dev/md[0-9]+$ ]]
+					then
+						ThinPoolCandidates["$normalized_device"]=1
+					elif [[ "$raid_type" == raid* ]] && [[ "$normalized_device" =~ ^/dev/md[0-9]+$ ]]
+					then
+						ThinPoolCandidates["$normalized_device"]=1
+					elif [[ -n "$raid_parent" ]] && [[ "$raid_parent" =~ ^md[0-9]+$ ]]
+					then
+						ThinPoolCandidates["/dev/$raid_parent"]=1
+					fi
+				done < <(lsblk -nrpo NAME,TYPE,PKNAME "$lv_path" 2>/dev/null)
+			fi
+
+			for md_candidate in "${!ThinPoolCandidates[@]}"
+			do
+				if [ -z "$md_candidate" ]
+				then
+					continue
+				fi
+				mdadm_details=$(mdadm -D "$md_candidate" 2>/dev/null)
+				if [ -z "$mdadm_details" ]
+				then
+					continue
+				fi
+
+				raid_key="${mount_point}|${md_candidate}"
+				if [ -n "${ProcessedThinRaid[$raid_key]}" ]
+				then
+					continue
+				fi
+
+				ProcessedThinRaid[$raid_key]=1
+				RAID="$RAID$mount_point,$md_candidate,$mdadm_details;"
+				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Linked thin LVM pool $lv_path to RAID $md_candidate" >> "$ScriptPath"/debug.log; fi
+			done
+		fi
+
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Added thin LVM pool $lv_path as $mount_point Size: $lv_size Used: $used_size Free: $available_size" >> "$ScriptPath"/debug.log; fi
 	done < <(lvs --noheadings --separator ',' --units B --nosuffix -o lv_name,vg_name,lv_path,lv_attr,lv_size,data_percent,lv_tags 2>/dev/null)
 fi
+RAID=$(echo -ne "$RAID" | base64 | tr -d '\n\r\t ')
+ZP=$(echo -ne "$ZP" | base64 | tr -d '\n\r\t ')
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAID: $RAID ZP: $ZP" >> "$ScriptPath"/debug.log; fi
 DISKs=$(echo -ne "$DISKs" | base64 | tr -d '\n\r\t ')
 
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DISKs: $DISKs" >> "$ScriptPath"/debug.log; fi
