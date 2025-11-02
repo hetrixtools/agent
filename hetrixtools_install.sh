@@ -78,21 +78,26 @@ if [ -z "$2" ]
 	exit
 fi
 
-# Check for wget and systemd/cron availability
+# Check for wget and cron/systemd availability
 echo "Checking system utilities..."
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
+USE_CRON=0
 USE_SYSTEMD=0
+SYSTEMCTL_AVAILABLE=0
+if command -v crontab >/dev/null 2>&1; then
+	USE_CRON=1
+fi
 if command -v systemctl >/dev/null 2>&1; then
-	if [ -d /run/systemd/system ]; then
-		USE_SYSTEMD=1
-	else
-		if systemctl list-units >/dev/null 2>&1; then
-			USE_SYSTEMD=1
-		fi
+	if [ -d /run/systemd/system ] || systemctl list-units >/dev/null 2>&1; then
+		SYSTEMCTL_AVAILABLE=1
 	fi
 fi
-if [ "$USE_SYSTEMD" -ne 1 ]; then
-	command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required to run this agent when systemd is unavailable." >&2; exit 1; }
+if [ "$USE_CRON" -ne 1 ] && [ "$SYSTEMCTL_AVAILABLE" -eq 1 ]; then
+	USE_SYSTEMD=1
+fi
+if [ "$USE_CRON" -ne 1 ] && [ "$USE_SYSTEMD" -ne 1 ]; then
+	echo "ERROR: Neither cron nor systemd is available to schedule the agent." >&2
+	exit 1
 fi
 echo "... done."
 
@@ -217,7 +222,7 @@ fi
 echo "... done."
 
 # Removing old systemd service/timer (if exists)
-if [ "$USE_SYSTEMD" -eq 1 ]; then
+if [ "$SYSTEMCTL_AVAILABLE" -eq 1 ]; then
 	systemctl stop hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl disable hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl stop hetrixtools_agent.service >/dev/null 2>&1
@@ -228,7 +233,18 @@ rm -f /etc/systemd/system/hetrixtools_agent.timer >/dev/null 2>&1
 rm -f /etc/systemd/system/hetrixtools_agent.service >/dev/null 2>&1
 
 # Setup the new systemd or cronjob timer to run the agent every minute
-if [ "$USE_SYSTEMD" -eq 1 ]
+if [ "$USE_CRON" -eq 1 ]
+then
+	# Default is running the agent as 'hetrixtools' user, unless chosen otherwise by the client when fetching the installation code from the hetrixtools website.
+	if [ "$2" -eq "1" ]
+	then
+		echo "Setting up the new cronjob as 'root' user..."
+		crontab -u root -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u root - >/dev/null 2>&1
+	else
+		echo "Setting up the new cronjob as 'hetrixtools' user..."
+		crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u hetrixtools - >/dev/null 2>&1
+	fi
+elif [ "$USE_SYSTEMD" -eq 1 ]
 then
 	echo "Setting up systemd timer..."
 		if [ "$2" -eq "1" ]
@@ -263,16 +279,10 @@ WantedBy=timers.target
 EOF
 	systemctl daemon-reload >/dev/null 2>&1
 	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
+	systemctl restart hetrixtools_agent.timer >/dev/null 2>&1
 else
-	# Default is running the agent as 'hetrixtools' user, unless chosen otherwise by the client when fetching the installation code from the hetrixtools website.
-	if [ "$2" -eq "1" ]
-	then
-		echo "Setting up the new cronjob as 'root' user..."
-		crontab -u root -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u root - >/dev/null 2>&1
-	else
-		echo "Setting up the new cronjob as 'hetrixtools' user..."
-		crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u hetrixtools - >/dev/null 2>&1
-	fi
+	echo "ERROR: Unable to configure scheduling for the agent." >&2
+	exit 1
 fi
 echo "... done."
 
