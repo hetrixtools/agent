@@ -64,11 +64,60 @@ if [ "$EUID" -ne 0 ]
 fi
 echo "... done."
 
-# Check for required system utilities (wget + either systemd or cron)
+# Check for required system utilities (wget + either cron or systemd)
 echo "Checking system utilities..."
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
-if ! command -v systemctl >/dev/null 2>&1; then
-	command -v crontab >/dev/null 2>&1 || { echo "ERROR: Crontab is required when systemd is not available." >&2; exit 1; }
+USE_CRON=0
+USE_SYSTEMD=0
+SYSTEMCTL_AVAILABLE=0
+EXISTING_CRON=0
+CRON_ACTIVE=0
+if command -v systemctl >/dev/null 2>&1; then
+	if [ -d /run/systemd/system ] || systemctl list-units >/dev/null 2>&1; then
+		SYSTEMCTL_AVAILABLE=1
+	fi
+fi
+if command -v crontab >/dev/null 2>&1; then
+	if crontab -u root -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
+		EXISTING_CRON=1
+	elif id -u hetrixtools >/dev/null 2>&1 && crontab -u hetrixtools -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
+		EXISTING_CRON=1
+	fi
+	CRON_ACTIVE=$EXISTING_CRON
+	if command -v pgrep >/dev/null 2>&1 && [ "$CRON_ACTIVE" -ne 1 ]; then
+		for cron_process in cron crond cronie systemd-cron fcron busybox-cron busybox-crond; do
+			if pgrep -x "$cron_process" >/dev/null 2>&1 || pgrep -f "$cron_process" >/dev/null 2>&1; then
+				CRON_ACTIVE=1
+				break
+			fi
+		done
+	fi
+	if [ "$CRON_ACTIVE" -ne 1 ] && [ "$SYSTEMCTL_AVAILABLE" -eq 1 ]; then
+		for cron_service in cron crond cronie systemd-cron fcron busybox-cron busybox-crond; do
+			if systemctl is-active --quiet "$cron_service"; then
+				CRON_ACTIVE=1
+				break
+			fi
+		done
+		if [ "$CRON_ACTIVE" -ne 1 ]; then
+			if systemctl list-units --type=service --state=active 2>/dev/null | grep -Ei '\bcron(ie)?\b' >/dev/null 2>&1; then
+				CRON_ACTIVE=1
+			fi
+		fi
+	fi
+	if [ "$CRON_ACTIVE" -ne 1 ] && [ "$SYSTEMCTL_AVAILABLE" -ne 1 ]; then
+		CRON_ACTIVE=1
+	fi
+	if [ "$CRON_ACTIVE" -eq 1 ]; then
+		USE_CRON=1
+	fi
+fi
+if [ "$USE_CRON" -ne 1 ] && [ "$SYSTEMCTL_AVAILABLE" -eq 1 ]; then
+	USE_SYSTEMD=1
+fi
+if [ "$USE_CRON" -ne 1 ] && [ "$USE_SYSTEMD" -ne 1 ]; then
+	echo "ERROR: Neither cron nor systemd is available to schedule the agent." >&2
+	exit 1
 fi
 echo "... done."
 
@@ -247,12 +296,68 @@ then
 	sed -i "s/OutgoingPingsCount=20/OutgoingPingsCount=$OutgoingPingsCount/" /etc/hetrixtools/hetrixtools.cfg
 fi
 
-# Refresh systemd timer configuration (if systemd is in use and timer exists)
-if command -v systemctl >/dev/null 2>&1 && [ -f /etc/systemd/system/hetrixtools_agent.timer ]
+# Refresh scheduler configuration (prefer cron when available)
+if [ "$USE_CRON" -eq 1 ]
 then
-	echo "Updating systemd service and timer schedule..."
+	echo "Ensuring cron schedule is configured..."
+	CRON_TARGET_USER=""
+	if crontab -u root -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
+		CRON_TARGET_USER=root
+	elif id -u hetrixtools >/dev/null 2>&1 && crontab -u hetrixtools -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
+		CRON_TARGET_USER=hetrixtools
+	fi
+	if [ -z "$CRON_TARGET_USER" ]; then
+		FILE_OWNER=$(stat -c '%U' /etc/hetrixtools/hetrixtools_agent.sh 2>/dev/null || echo hetrixtools)
+		if [ "$FILE_OWNER" = "root" ]; then
+			CRON_TARGET_USER=root
+		elif [ "$FILE_OWNER" = "hetrixtools" ] && id -u hetrixtools >/dev/null 2>&1; then
+			CRON_TARGET_USER=hetrixtools
+		elif id -u hetrixtools >/dev/null 2>&1; then
+			CRON_TARGET_USER=hetrixtools
+		else
+			CRON_TARGET_USER=root
+		fi
+	fi
+	if [ "$CRON_TARGET_USER" = "hetrixtools" ] && ! id -u hetrixtools >/dev/null 2>&1; then
+		CRON_TARGET_USER=root
+	fi
+	crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh' | crontab -u root - >/dev/null 2>&1
+	if id -u hetrixtools >/dev/null 2>&1; then
+		crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh' | crontab -u hetrixtools - >/dev/null 2>&1
+	fi
+	if [ "$CRON_TARGET_USER" = "root" ]; then
+		crontab -u root -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u root - >/dev/null 2>&1
+	else
+		crontab -u hetrixtools -l 2>/dev/null | { cat; echo "* * * * * bash /etc/hetrixtools/hetrixtools_agent.sh >> /etc/hetrixtools/hetrixtools_cron.log 2>&1"; } | crontab -u hetrixtools - >/dev/null 2>&1
+	fi
+	if [ "$SYSTEMCTL_AVAILABLE" -eq 1 ]; then
+		systemctl stop hetrixtools_agent.timer >/dev/null 2>&1
+		systemctl disable hetrixtools_agent.timer >/dev/null 2>&1
+		systemctl stop hetrixtools_agent.service >/dev/null 2>&1
+		systemctl disable hetrixtools_agent.service >/dev/null 2>&1
+		systemctl daemon-reload >/dev/null 2>&1
+	fi
+	rm -f /etc/systemd/system/hetrixtools_agent.timer >/dev/null 2>&1
+	rm -f /etc/systemd/system/hetrixtools_agent.service >/dev/null 2>&1
+	echo "... done."
+elif [ "$USE_SYSTEMD" -eq 1 ]
+then
+	echo "Ensuring systemd service and timer schedule..."
 	SERVICE_USER=$(stat -c '%U' /etc/hetrixtools/hetrixtools_agent.sh 2>/dev/null || echo root)
-cat > /etc/systemd/system/hetrixtools_agent.service <<EOF
+	if [ "$SERVICE_USER" != "root" ] && [ "$SERVICE_USER" != "hetrixtools" ]; then
+		if id -u hetrixtools >/dev/null 2>&1; then
+			SERVICE_USER=hetrixtools
+		else
+			SERVICE_USER=root
+		fi
+	fi
+	if command -v crontab >/dev/null 2>&1; then
+		crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh' | crontab -u root - >/dev/null 2>&1
+		if id -u hetrixtools >/dev/null 2>&1; then
+			crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh' | crontab -u hetrixtools - >/dev/null 2>&1
+		fi
+	fi
+	cat > /etc/systemd/system/hetrixtools_agent.service <<EOF
 [Unit]
 Description=HetrixTools Agent
 
@@ -278,6 +383,7 @@ WantedBy=timers.target
 EOF
 	systemctl daemon-reload >/dev/null 2>&1
 	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
+	systemctl restart hetrixtools_agent.timer >/dev/null 2>&1
 	echo "... done."
 fi
 
