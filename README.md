@@ -6,6 +6,7 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 #### Version 2.3.7:
 - Further improvements on the agent's running schedule
+- Debug Mode improvements.
 
 #### Version 2.3.6:
 - Improved thin LVM monitoring to detect underlying RAID (if exists)

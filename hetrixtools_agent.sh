@@ -294,6 +294,7 @@ declare -A BlockSize
 declare -A IOPSRead
 declare -A IOPSWrite
 diskstats=$(cat /proc/diskstats)
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) /proc/diskstats:\n$diskstats" >> "$ScriptPath"/debug.log; fi
 lsblk_mnt_option="MOUNTPOINTS"
 if ! lsblk -l -o NAME,MOUNTPOINTS >/dev/null 2>&1; then
 	lsblk_mnt_option="MOUNTPOINT"
@@ -733,6 +734,7 @@ INODEs=$(echo -ne "$(echo "$df_inodes_output" | sed 1d | grep -v -E 'tmpfs' | aw
 # Disks IOPS
 IOPS=""
 diskstats=$(cat /proc/diskstats)
+if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) /proc/diskstats:\n$diskstats" >> "$ScriptPath"/debug.log; fi
 for i in "${!vDISKs[@]}"
 do
 	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * ${BlockSize[$i]} / $tTIMEDIFF}" 2> /dev/null)
