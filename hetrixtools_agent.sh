@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.7"
+Version="2.3.8"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -290,7 +290,6 @@ do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
 done
-declare -A BlockSize
 declare -A IOPSRead
 declare -A IOPSWrite
 diskstats=$(cat /proc/diskstats)
@@ -299,15 +298,10 @@ lsblk_mnt_option="MOUNTPOINTS"
 if ! lsblk -l -o NAME,MOUNTPOINTS >/dev/null 2>&1; then
 	lsblk_mnt_option="MOUNTPOINT"
 fi
-lsblk_blocksize=$(lsblk -l -b -o NAME,PHY-SEC,${lsblk_mnt_option} 2>/dev/null)
+DiskstatsSectorSize=512
 for i in "${!vDISKs[@]}"
 do
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) IOPS Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
-	BlockSize[$i]=$(echo "$lsblk_blocksize" | grep -w "${vDISKs[$i]}" | awk '{print $2}')
-	if [ -z "${BlockSize[$i]}" ] || ! [[ ${BlockSize[$i]} =~ ^[0-9]+$ ]] || [ "$(echo "${BlockSize[$i]}" | wc -l)" -ne 1 ] || [ "${BlockSize[$i]}" -eq 0 ]
-	then
-		BlockSize[$i]=512
-	fi
 	IOPSRead[$i]=0
 	IOPSWrite[$i]=0
 	if [ ! -z "${vDISKs[$i]}" ]
@@ -323,7 +317,7 @@ do
 	then
 		IOPSWrite[$i]=0
 	fi
-	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i Block Size: ${BlockSize[$i]} IOPS Read: ${IOPSRead[$i]} Write: ${IOPSWrite[$i]}" >> "$ScriptPath"/debug.log; fi
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i Sector Bytes: $DiskstatsSectorSize Read Sectors: ${IOPSRead[$i]} Write Sectors: ${IOPSWrite[$i]}" >> "$ScriptPath"/debug.log; fi
 done
 
 # Zpool IOPS
@@ -737,9 +731,9 @@ diskstats=$(cat /proc/diskstats)
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) /proc/diskstats:\n$diskstats" >> "$ScriptPath"/debug.log; fi
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * ${BlockSize[$i]} / $tTIMEDIFF}" 2> /dev/null)
+	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * $DiskstatsSectorSize / $tTIMEDIFF}" 2> /dev/null)
 	IOPSRead[$i]=$(echo "${IOPSRead[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
-	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}" 2> /dev/null) * ${BlockSize[$i]} / $tTIMEDIFF}" 2> /dev/null)
+	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}" 2> /dev/null) * $DiskstatsSectorSize / $tTIMEDIFF}" 2> /dev/null)
 	IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
 	IOPS="$IOPS$i,${IOPSRead[$i]},${IOPSWrite[$i]};"
 done

@@ -4,6 +4,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.8:
+- Fixed an issue where, in some cases, IO metrics were not measured correctly
+
 #### Version 2.3.7:
 - Further improvements on the agent's running schedule
 - Debug Mode improvements.
