@@ -4,6 +4,9 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.3.9:
+- Improved Debug Mode
+
 #### Version 2.3.8:
 - Fixed an issue where, in some cases, IO metrics were not measured correctly
 

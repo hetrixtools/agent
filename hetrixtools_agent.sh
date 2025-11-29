@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.8"
+Version="2.3.9"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -574,22 +574,30 @@ done
 if command -v "ipmitool" > /dev/null 2>&1
 then
 	IPMIArray=()
-	while IFS='' read -r line; do IPMIArray+=("$line"); done < <(timeout -s 9 5 ipmitool sdr type Temperature)
-	for i in "${IPMIArray[@]}"
-	do
-		if [ -n "$i" ]
-		then
-			if [[ "$i" == *"degrees"* ]]
+	IPMICmdOutput=$(timeout -s 9 5 ipmitool sdr type Temperature 2>&1)
+	IPMICmdStatus=$?
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) ipmitool status: $IPMICmdStatus output:\n$IPMICmdOutput" >> "$ScriptPath"/debug.log; fi
+	if [ "$IPMICmdStatus" -eq 0 ] && [ -n "$IPMICmdOutput" ]
+	then
+		while IFS='' read -r line; do IPMIArray+=("$line"); done <<< "$IPMICmdOutput"
+		for i in "${IPMIArray[@]}"
+		do
+			if [ -n "$i" ]
 			then
-				TempName=$(echo "$i" | awk -F"|" '{print $1}' | xargs | sed 's/ /_/g')
-				TempVal=$(echo "$i" | awk -F"|" '{print $NF}' | awk -F"degrees" '{print $1}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
-				TempArray[$TempName]=${TempArray[$TempName]:-0}
-				TempArray[$TempName]=$((TempArray[$TempName] + TempVal))
-				TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
-				TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+				if [[ "$i" == *"degrees"* ]]
+				then
+					TempName=$(echo "$i" | awk -F"|" '{print $1}' | xargs | sed 's/ /_/g')
+					TempVal=$(echo "$i" | awk -F"|" '{print $NF}' | awk -F"degrees" '{print $1}' | sed 's/ //g' | awk '{printf "%18.3f",$1}' | sed -e 's/\.//g' | xargs)
+					TempArray[$TempName]=${TempArray[$TempName]:-0}
+					TempArray[$TempName]=$((TempArray[$TempName] + TempVal))
+					TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
+					TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+				fi
 			fi
-		fi
-	done
+		done
+	else
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) ipmitool skipped (empty output or error)" >> "$ScriptPath"/debug.log; fi
+	fi
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 fi
 
