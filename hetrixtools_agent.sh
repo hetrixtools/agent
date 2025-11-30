@@ -498,7 +498,7 @@ do
 			fi
 			TempNameCnt=$((TempNameCnt + 1))
 		done
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+		if [ "$DEBUG" -eq 1 ]; then TempDebug=""; for k in "${!TempArray[@]}"; do TempDebug="$TempDebug$k=${TempArray[$k]} "; done; echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: $TempDebug" >> "$ScriptPath"/debug.log; fi
 	fi
 
 	# Temperature (sensors)
@@ -550,7 +550,7 @@ do
 				TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
 				TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
 			fi
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+			if [ "$DEBUG" -eq 1 ]; then TempDebug=""; for k in "${!TempArray[@]}"; do TempDebug="$TempDebug$k=${TempArray[$k]} "; done; echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: $TempDebug" >> "$ScriptPath"/debug.log; fi
 		else
 			SensorsCmdDisable=1
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
@@ -598,7 +598,7 @@ then
 	else
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) ipmitool skipped (empty output or error)" >> "$ScriptPath"/debug.log; fi
 	fi
-	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+	if [ "$DEBUG" -eq 1 ]; then TempDebug=""; for k in "${!TempArray[@]}"; do TempDebug="$TempDebug$k=${TempArray[$k]} "; done; echo -e "$ScriptStartTime-$(date +%T]) Temperature ipmitool: $TempDebug" >> "$ScriptPath"/debug.log; fi
 fi
 
 # Get user running the agent
