@@ -37,34 +37,38 @@ fi
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
 
+function serviceprocessrunning() {
+	if command -v "pgrep" > /dev/null 2>&1
+	then
+		pgrep -f "[\/ ]$1([^\/]|$)" > /dev/null 2>&1
+	else
+		(( $(ps -ef | grep -E "[\/ ]$1([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
+	fi
+}
+
 # Service status function
 function servicestatus() {
-	# Check first via ps
-	if (( $(ps -ef | grep -E "[\/ ]$1([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
-	then # Up
-		echo "1"
-	else # Down, try with systemctl (if available)
-		if command -v "systemctl" > /dev/null 2>&1
-		then # Use systemctl
-			if systemctl is-active --quiet "$1"
-			then # Up
-				echo "1"
-			else # Down, try service command
-				if service "$1" status > /dev/null 2>&1
-				then
-					echo "1"
-				else
-					echo "0"
-				fi
-			fi
-		else # No systemctl, try service command
-			if service "$1" status > /dev/null 2>&1
-			then
-				echo "1"
-			else
-				echo "0"
-			fi
+	if command -v "systemctl" > /dev/null 2>&1
+	then
+		if systemctl is-active --quiet "$1"
+		then
+			echo "1"
+			return 0
 		fi
+	fi
+	if command -v "service" > /dev/null 2>&1
+	then
+		if service "$1" status > /dev/null 2>&1
+		then
+			echo "1"
+			return 0
+		fi
+	fi
+	if serviceprocessrunning "$1"
+	then
+		echo "1"
+	else
+		echo "0"
 	fi
 }
 
