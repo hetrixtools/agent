@@ -34,6 +34,47 @@ github_wget() {
 	return 0
 }
 
+# Detect whether the currently installed agent is configured to run as
+# 'root' or as the 'hetrixtools' user, using the existing cron/systemd setup.
+detect_agent_run_user() {
+	local detected_user=""
+	local systemd_unit=""
+
+	if command -v crontab >/dev/null 2>&1; then
+		if crontab -u root -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
+			detected_user=root
+		elif id -u hetrixtools >/dev/null 2>&1 && crontab -u hetrixtools -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
+			detected_user=hetrixtools
+		fi
+	fi
+
+	if [ -z "$detected_user" ]; then
+		for systemd_unit in \
+			/etc/systemd/system/hetrixtools_agent.service \
+			/lib/systemd/system/hetrixtools_agent.service \
+			/usr/lib/systemd/system/hetrixtools_agent.service
+		do
+			if [ -f "$systemd_unit" ]; then
+				detected_user=$(awk -F= '/^User=/{print $2; exit}' "$systemd_unit" 2>/dev/null)
+				if [ -z "$detected_user" ]; then
+					detected_user=root
+				fi
+				break
+			fi
+		done
+	fi
+
+	if [ "$detected_user" != "root" ] && [ "$detected_user" != "hetrixtools" ]; then
+		if id -u hetrixtools >/dev/null 2>&1; then
+			detected_user=hetrixtools
+		else
+			detected_user=root
+		fi
+	fi
+
+	echo "$detected_user"
+}
+
 # Old Agent Path
 AGENT="/etc/hetrixtools/hetrixtools_agent.sh"
 
@@ -142,6 +183,11 @@ else
 	echo "Upgrading from v1..."
 	EXTRACT=$AGENT
 fi
+
+# Detect the current runtime user before recreating cron/systemd entries later.
+echo "Detecting the current agent runtime user..."
+AGENT_RUNTIME_USER=$(detect_agent_run_user)
+echo "... done."
 
 # Extract data from the old agent
 echo "Extracting configs from the old agent..."
@@ -328,16 +374,7 @@ then
 		CRON_TARGET_USER=hetrixtools
 	fi
 	if [ -z "$CRON_TARGET_USER" ]; then
-		FILE_OWNER=$(stat -c '%U' /etc/hetrixtools/hetrixtools_agent.sh 2>/dev/null || echo hetrixtools)
-		if [ "$FILE_OWNER" = "root" ]; then
-			CRON_TARGET_USER=root
-		elif [ "$FILE_OWNER" = "hetrixtools" ] && id -u hetrixtools >/dev/null 2>&1; then
-			CRON_TARGET_USER=hetrixtools
-		elif id -u hetrixtools >/dev/null 2>&1; then
-			CRON_TARGET_USER=hetrixtools
-		else
-			CRON_TARGET_USER=root
-		fi
+		CRON_TARGET_USER=$AGENT_RUNTIME_USER
 	fi
 	if [ "$CRON_TARGET_USER" = "hetrixtools" ] && ! id -u hetrixtools >/dev/null 2>&1; then
 		CRON_TARGET_USER=root
@@ -364,13 +401,9 @@ then
 elif [ "$USE_SYSTEMD" -eq 1 ]
 then
 	echo "Ensuring systemd service and timer schedule..."
-	SERVICE_USER=$(stat -c '%U' /etc/hetrixtools/hetrixtools_agent.sh 2>/dev/null || echo root)
-	if [ "$SERVICE_USER" != "root" ] && [ "$SERVICE_USER" != "hetrixtools" ]; then
-		if id -u hetrixtools >/dev/null 2>&1; then
-			SERVICE_USER=hetrixtools
-		else
-			SERVICE_USER=root
-		fi
+	SERVICE_USER=$AGENT_RUNTIME_USER
+	if [ "$SERVICE_USER" = "hetrixtools" ] && ! id -u hetrixtools >/dev/null 2>&1; then
+		SERVICE_USER=root
 	fi
 	if command -v crontab >/dev/null 2>&1; then
 		crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh' | crontab -u root - >/dev/null 2>&1

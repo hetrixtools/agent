@@ -8,7 +8,8 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 - Added support for Outgoing Pings on defined ports
 - Improved RAM metrics collection
 - Improved service status monitoring
-- Improved disks reading
+- Improved disk metrics collection
+- Improved update method
 
 #### Version 2.3.8:
 - Fixed an issue where, in some cases, IO metrics were not measured correctly
