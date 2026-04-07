@@ -217,14 +217,16 @@ echo "Checking if any disks should be ignored..."
 if [ -n "$IgnoredDisksLine" ]
 then
 	echo "Ignored disks found, inserting them into the agent config..."
-	IgnoredDisksTmp=$(mktemp)
-	grep '^IgnoredDisks=' "$EXTRACT" > "$IgnoredDisksTmp"
-	awk '
-		NR == FNR { replacement=$0; next }
+	if awk -v replacement="$IgnoredDisksLine" '
 		/^IgnoredDisks=/ { print replacement; next }
 		{ print }
-	' "$IgnoredDisksTmp" /etc/hetrixtools/hetrixtools.cfg > /etc/hetrixtools/hetrixtools.cfg.tmp && mv /etc/hetrixtools/hetrixtools.cfg.tmp /etc/hetrixtools/hetrixtools.cfg
-	rm -f "$IgnoredDisksTmp"
+	' /etc/hetrixtools/hetrixtools.cfg > /etc/hetrixtools/hetrixtools.cfg.tmp
+	then
+		mv /etc/hetrixtools/hetrixtools.cfg.tmp /etc/hetrixtools/hetrixtools.cfg
+	else
+		rm -f /etc/hetrixtools/hetrixtools.cfg.tmp
+		echo "WARNING: Failed to preserve IgnoredDisks during update." >&2
+	fi
 fi
 echo "... done."
 

@@ -4,7 +4,6 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
-
 #### Version 2.4.0:
 - Added support for Outgoing Pings on defined ports
 - Improved RAM metrics collection

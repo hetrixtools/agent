@@ -47,12 +47,19 @@ function filterignoreddisks() {
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
 
+function regexescape() {
+	printf '%s' "$1" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g'
+}
+
 function serviceprocessrunning() {
+	local service_regex
+	service_regex=$(regexescape "$1")
+
 	if command -v "pgrep" > /dev/null 2>&1
 	then
-		pgrep -f "[\/ ]$1([^\/]|$)" > /dev/null 2>&1
+		pgrep -f "[\/ ]${service_regex}([^\/]|$)" > /dev/null 2>&1
 	else
-		(( $(ps -ef | grep -E "[\/ ]$1([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
+		(( $(ps -ef | grep -E "[\/ ]${service_regex}([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
 	fi
 }
 
