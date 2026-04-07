@@ -150,7 +150,7 @@ SID=$(grep 'SID="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Network Interfaces
 NetworkInterfaces=$(grep 'NetworkInterfaces="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Ignored Disks
-IgnoredDisks=$(grep 'IgnoredDisks="' $EXTRACT | awk -F'"' '{ print $2 }')
+IgnoredDisksLine=$(grep '^IgnoredDisks=' "$EXTRACT")
 # Check Services
 CheckServices=$(grep 'CheckServices="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Check Software RAID Health
@@ -214,10 +214,17 @@ echo "... done."
 
 # Check if any disks should be ignored
 echo "Checking if any disks should be ignored..."
-if [ ! -z "$IgnoredDisks" ]
+if [ -n "$IgnoredDisksLine" ]
 then
 	echo "Ignored disks found, inserting them into the agent config..."
-	sed -i "s/IgnoredDisks=\"\"/IgnoredDisks=\"$IgnoredDisks\"/" /etc/hetrixtools/hetrixtools.cfg
+	IgnoredDisksTmp=$(mktemp)
+	grep '^IgnoredDisks=' "$EXTRACT" > "$IgnoredDisksTmp"
+	awk '
+		NR == FNR { replacement=$0; next }
+		/^IgnoredDisks=/ { print replacement; next }
+		{ print }
+	' "$IgnoredDisksTmp" /etc/hetrixtools/hetrixtools.cfg > /etc/hetrixtools/hetrixtools.cfg.tmp && mv /etc/hetrixtools/hetrixtools.cfg.tmp /etc/hetrixtools/hetrixtools.cfg
+	rm -f "$IgnoredDisksTmp"
 fi
 echo "... done."
 
