@@ -47,6 +47,21 @@ function filterignoreddisks() {
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
 
+function validextendedregex() {
+	printf '' | grep -E -- "$1" > /dev/null 2>&1
+	local GrepExitCode=$?
+	[ "$GrepExitCode" -ne 2 ]
+}
+
+if [ -n "$DisksIgnoreFilter" ] && ! validextendedregex "$DisksIgnoreFilter"
+then
+	if [ "$DEBUG" -eq 1 ]
+	then
+		echo -e "$ScriptStartTime-$(date +%T]) WARNING: IgnoredDisks contains an invalid regex ($DisksIgnoreFilter), disk filtering disabled" >> "$ScriptPath"/debug.log
+	fi
+	DisksIgnoreFilter=""
+fi
+
 function regexescape() {
 	printf '%s' "$1" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g'
 }
@@ -57,9 +72,9 @@ function serviceprocessrunning() {
 
 	if command -v "pgrep" > /dev/null 2>&1
 	then
-		pgrep -f "[\/ ]${service_regex}([^\/]|$)" > /dev/null 2>&1
+		pgrep -x "$1" > /dev/null 2>&1 || pgrep -f "(^|\/)${service_regex}([[:space:]]|$)" > /dev/null 2>&1
 	else
-		(( $(ps -ef | grep -E "[\/ ]${service_regex}([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
+		(( $(ps -eo args= | grep -E "(^|/)${service_regex}([[:space:]]|$)" | grep -v "grep" | wc -l) > 0 ))
 	fi
 }
 
