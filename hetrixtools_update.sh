@@ -149,6 +149,8 @@ echo "Extracting configs from the old agent..."
 SID=$(grep 'SID="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Network Interfaces
 NetworkInterfaces=$(grep 'NetworkInterfaces="' $EXTRACT | awk -F'"' '{ print $2 }')
+# Ignored Disks
+IgnoredDisks=$(grep 'IgnoredDisks="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Check Services
 CheckServices=$(grep 'CheckServices="' $EXTRACT | awk -F'"' '{ print $2 }')
 # Check Software RAID Health
@@ -208,6 +210,16 @@ then
 	echo "Network interfaces found, inserting them into the agent config..."
 	sed -i "s/NetworkInterfaces=\"\"/NetworkInterfaces=\"$NetworkInterfaces\"/" /etc/hetrixtools/hetrixtools.cfg
 fi
+echo "... done."
+
+# Check if any disks should be ignored
+echo "Checking if any disks should be ignored..."
+if [ ! -z "$IgnoredDisks" ]
+then
+	echo "Ignored disks found, inserting them into the agent config..."
+	sed -i "s/IgnoredDisks=\"\"/IgnoredDisks=\"$IgnoredDisks\"/" /etc/hetrixtools/hetrixtools.cfg
+fi
+echo "... done."
 
 # Check if any services are to be monitored
 echo "Checking if any services should be monitored..."

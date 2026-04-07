@@ -33,6 +33,7 @@ then
 else
 	exit 1
 fi
+DisksIgnoreFilter="$IgnoredDisks"
 
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
@@ -556,7 +557,7 @@ if [ $? -ne 0 ] || [ -z "$df_mount_output" ]
 then
 	df_mount_output=$(timeout 3 df -l 2>/dev/null)
 fi
-for i in $(echo "$df_mount_output" | awk '$1 ~ /\// {print $(NF)}')
+for i in $(echo "$df_mount_output" | grep -v -E "$DisksIgnoreFilter" | awk '$1 ~ /\// {print $(NF)}')
 do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
@@ -1053,7 +1054,7 @@ if [ $? -ne 0 ] || [ -z "$df_inodes_output" ]
 then
 	df_inodes_output=$(timeout 3 df -l -Ti 2>/dev/null)
 fi
-INODEs=$(echo -ne "$(echo "$df_inodes_output" | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
+INODEs=$(echo -ne "$(echo "$df_inodes_output" | sed 1d | grep -v -E "$DisksIgnoreFilter" | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
 
 # Disks IOPS
 IOPS=""
@@ -1238,7 +1239,7 @@ if [ $? -ne 0 ] || [ -z "$df_disk_usage" ]
 then
 	df_disk_usage=$(timeout 3 df -l -TPB1 2>/dev/null)
 fi
-IFS=$'\n' read -d '' -r -a DISKsArray < <(printf '%s\n' "$df_disk_usage" | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')
+IFS=$'\n' read -d '' -r -a DISKsArray < <(printf '%s\n' "$df_disk_usage" | sed 1d | grep -v -E "$DisksIgnoreFilter" | awk '{print $(NF)","$2","$3","$4","$5";"}')
 for i in "${DISKsArray[@]}"
 do
 	IFS=',' read -r mount_point filesystem_type total_size used_size available_size <<< "$i"
