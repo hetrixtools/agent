@@ -2,7 +2,7 @@
 #
 #
 #	HetrixTools Server Monitoring Agent
-#	Copyright 2015 - 2025 @  HetrixTools
+#	Copyright 2015 - 2026 @  HetrixTools
 #	For support, please open a ticket on our website https://hetrixtools.com
 #
 #
@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.3.8"
+Version="2.4.0"
 
 # Load configuration file
 if [ -f "$ScriptPath"/hetrixtools.cfg ]
@@ -33,38 +33,74 @@ then
 else
 	exit 1
 fi
+DisksIgnoreFilter="$IgnoredDisks"
+
+function filterignoreddisks() {
+	if [ -n "$DisksIgnoreFilter" ]
+	then
+		grep -v -E -- "$DisksIgnoreFilter"
+	else
+		cat
+	fi
+}
 
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
 
+function validextendedregex() {
+	printf '' | grep -E -- "$1" > /dev/null 2>&1
+	local GrepExitCode=$?
+	[ "$GrepExitCode" -ne 2 ]
+}
+
+if [ -n "$DisksIgnoreFilter" ] && ! validextendedregex "$DisksIgnoreFilter"
+then
+	if [ "$DEBUG" -eq 1 ]
+	then
+		echo -e "$ScriptStartTime-$(date +%T]) WARNING: IgnoredDisks contains an invalid regex ($DisksIgnoreFilter), disk filtering disabled" >> "$ScriptPath"/debug.log
+	fi
+	DisksIgnoreFilter=""
+fi
+
+function regexescape() {
+	printf '%s' "$1" | sed -e 's/[][(){}.^$*+?|\\]/\\&/g'
+}
+
+function serviceprocessrunning() {
+	local service_regex
+	service_regex=$(regexescape "$1")
+
+	if command -v "pgrep" > /dev/null 2>&1
+	then
+		pgrep -x "$1" > /dev/null 2>&1 || pgrep -f "(^|\/)${service_regex}([[:space:]]|$)" > /dev/null 2>&1
+	else
+		(( $(ps -eo args= | grep -E "(^|/)${service_regex}([[:space:]]|$)" | grep -v "grep" | wc -l) > 0 ))
+	fi
+}
+
 # Service status function
 function servicestatus() {
-	# Check first via ps
-	if (( $(ps -ef | grep -E "[\/ ]$1([^\/]|$)" | grep -v "grep" | wc -l) > 0 ))
-	then # Up
-		echo "1"
-	else # Down, try with systemctl (if available)
-		if command -v "systemctl" > /dev/null 2>&1
-		then # Use systemctl
-			if systemctl is-active --quiet "$1"
-			then # Up
-				echo "1"
-			else # Down, try service command
-				if service "$1" status > /dev/null 2>&1
-				then
-					echo "1"
-				else
-					echo "0"
-				fi
-			fi
-		else # No systemctl, try service command
-			if service "$1" status > /dev/null 2>&1
-			then
-				echo "1"
-			else
-				echo "0"
-			fi
+	if command -v "systemctl" > /dev/null 2>&1
+	then
+		if systemctl is-active --quiet "$1"
+		then
+			echo "1"
+			return 0
 		fi
+	fi
+	if command -v "service" > /dev/null 2>&1
+	then
+		if service "$1" status > /dev/null 2>&1
+		then
+			echo "1"
+			return 0
+		fi
+	fi
+	if serviceprocessrunning "$1"
+	then
+		echo "1"
+	else
+		echo "0"
 	fi
 }
 
@@ -76,25 +112,176 @@ function base64prep() {
 	echo "$str"
 }
 
-# Function used to perform outgoing PING tests
-function pingstatus() {
+function timems() {
+	local TimeNow
+	TimeNow=$(date +%s%3N 2>/dev/null)
+	if [[ "$TimeNow" =~ ^[0-9]+$ ]]
+	then
+		echo "$TimeNow"
+	else
+		echo "$(( $(date +%s) * 1000 ))"
+	fi
+}
+
+function runwithtimeout() {
+	local TimeoutSeconds=$1
+	local CaptureOutput=0
+	local OutputFile=""
+	local ExitCode=0
+	shift
+	RUNWITHTIMEOUT_LAST_OUTPUT=""
+	if [ "$DEBUG" -eq 1 ]
+	then
+		CaptureOutput=1
+		OutputFile=$(mktemp "${TMPDIR:-/tmp}/hetrixtools_tcp_probe.XXXXXX" 2>/dev/null)
+		if [ -z "$OutputFile" ]
+		then
+			OutputFile="/tmp/hetrixtools_tcp_probe.$$.$RANDOM"
+			: > "$OutputFile"
+		fi
+	fi
+	if command -v "timeout" > /dev/null 2>&1
+	then
+		if [ "$CaptureOutput" -eq 1 ]
+		then
+			timeout -s 9 "$TimeoutSeconds" "$@" > "$OutputFile" 2>&1
+		else
+			timeout -s 9 "$TimeoutSeconds" "$@" > /dev/null 2>&1
+		fi
+		ExitCode=$?
+	else
+		if [ "$CaptureOutput" -eq 1 ]
+		then
+			"$@" > "$OutputFile" 2>&1 &
+		else
+			"$@" > /dev/null 2>&1 &
+		fi
+		local CmdPID=$!
+		local WaitTicks=0
+		local MaxTicks=$(( TimeoutSeconds * 10 ))
+		while kill -0 "$CmdPID" > /dev/null 2>&1
+		do
+			if [ "$WaitTicks" -ge "$MaxTicks" ]
+			then
+				kill -9 "$CmdPID" > /dev/null 2>&1
+				wait "$CmdPID" > /dev/null 2>&1
+				ExitCode=124
+				break
+			fi
+			sleep 0.1
+			WaitTicks=$(( WaitTicks + 1 ))
+		done
+		if [ "$ExitCode" -ne 124 ]
+		then
+			wait "$CmdPID" > /dev/null 2>&1
+			ExitCode=$?
+		fi
+	fi
+	if [ "$CaptureOutput" -eq 1 ] && [ -f "$OutputFile" ]
+	then
+		RUNWITHTIMEOUT_LAST_OUTPUT=$(cat "$OutputFile")
+		rm -f "$OutputFile"
+	fi
+	return $ExitCode
+}
+
+function ncprobeavailable() {
+	if ! command -v "nc" > /dev/null 2>&1
+	then
+		return 1
+	fi
+	local NCHelp
+	NCHelp=$(nc -h 2>&1)
+	if [ -z "$NCHelp" ]
+	then
+		NCHelp=$(nc --help 2>&1)
+	fi
+	if echo "$NCHelp" | grep -q -- '-z' && echo "$NCHelp" | grep -q -- '-w'
+	then
+		return 0
+	fi
+	return 1
+}
+
+function devtcpprobeavailable() {
+	local DevTCPTest
+	DevTCPTest=$(bash -c 'exec 3<>/dev/tcp/127.0.0.1/1' 2>&1 || true)
+	if [[ "$DevTCPTest" == *"No such file or directory"* ]]
+	then
+		return 1
+	fi
+	return 0
+}
+
+function gettcpprobemethod() {
+	if [ -n "$TCPProbeMethod" ]
+	then
+		echo "$TCPProbeMethod"
+		return 0
+	fi
+	if ncprobeavailable
+	then
+		TCPProbeMethod="nc"
+	elif devtcpprobeavailable
+	then
+		TCPProbeMethod="devtcp"
+	elif command -v "telnet" > /dev/null 2>&1
+	then
+		TCPProbeMethod="telnet"
+	else
+		TCPProbeMethod="none"
+	fi
+	echo "$TCPProbeMethod"
+}
+
+function tcpsamplecount() {
+	local SampleCount=$(( (OutgoingPingsCount + 4) / 5 ))
+	if [ "$SampleCount" -lt 2 ]
+	then
+		SampleCount=2
+	fi
+	if [ "$SampleCount" -gt 8 ]
+	then
+		SampleCount=8
+	fi
+	echo "$SampleCount"
+}
+
+function tcpportprobe() {
+	local PingTarget=$1
+	local PingPort=$2
+	local ProbeTimeout=3
+	local ProbeMethod
+	ProbeMethod=$(gettcpprobemethod)
+	if [ "$ProbeMethod" == "nc" ]
+	then
+		TCPProbeLastCommand="nc -z -w $ProbeTimeout $PingTarget $PingPort"
+		runwithtimeout "$ProbeTimeout" nc -z -w "$ProbeTimeout" "$PingTarget" "$PingPort"
+		return $?
+	fi
+	if [ "$ProbeMethod" == "devtcp" ]
+	then
+		TCPProbeLastCommand="bash -c exec 3<>/dev/tcp/$PingTarget/$PingPort"
+		runwithtimeout "$ProbeTimeout" bash -c "exec 3<>/dev/tcp/$PingTarget/$PingPort"
+		return $?
+	fi
+	if [ "$ProbeMethod" == "telnet" ]
+	then
+		TCPProbeLastCommand="bash -c printf 'quit\\n' | telnet $PingTarget $PingPort"
+		runwithtimeout "$ProbeTimeout" bash -c "printf 'quit\n' | telnet $PingTarget $PingPort"
+		return $?
+	fi
+	TCPProbeLastCommand=""
+	return 1
+}
+
+function icmppingstatus() {
 	local TargetName=$1
 	local PingTarget=$2
-	if ! [[ "$TargetName" =~ ^[A-Za-z0-9._-]+$ ]]
-	then
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target name value" >> "$ScriptPath"/debug.log; fi
-		exit 1
-	fi
-	if ! [[ "$PingTarget" =~ ^[A-Za-z0-9.:_-]+$ ]]
-	then
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target value" >> "$ScriptPath"/debug.log; fi
-		exit 1
-	fi
-	if ! [[ "$OutgoingPingsCount" =~ ^[0-9]+$ ]] || (( OutgoingPingsCount < 10 || OutgoingPingsCount > 40 ))
-	then
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING count value" >> "$ScriptPath"/debug.log; fi
-		exit 1
-	fi
+	local PING_OUTPUT
+	local PACKET_LOSS
+	local RTT_LINE
+	local AVG_RTT
 	PING_OUTPUT=$(ping "$PingTarget" -c "$OutgoingPingsCount" 2>/dev/null)
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T])PING_OUTPUT:\n$PING_OUTPUT" >> "$ScriptPath"/debug.log; fi
 	PACKET_LOSS=$(echo "$PING_OUTPUT" | grep -o '[0-9]\+% packet loss' | cut -d'%' -f1)
@@ -116,11 +303,122 @@ function pingstatus() {
 	echo "$TargetName,$PingTarget,$PACKET_LOSS,$AVG_RTT;" >> "$ScriptPath"/ping.txt
 }
 
+function tcppingstatus() {
+	local TargetName=$1
+	local PingTarget=$2
+	local PingPort=$3
+	local OutputTarget="${PingTarget}_${PingPort}"
+	local ProbeMethod
+	local SampleCount
+	local SampleIndex=1
+	local SuccessCount=0
+	local FailCount=0
+	local RTTSum=0
+	local ProbeStart
+	local ProbeEnd
+	local ProbeRTT
+	local ProbeExitCode
+	local ProbeOutput
+	local PACKET_LOSS
+	local AVG_RTT
+	ProbeMethod=$(gettcpprobemethod)
+	if [ "$ProbeMethod" == "none" ]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) No TCP probing method available for $PingTarget:$PingPort" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	SampleCount=$(tcpsamplecount)
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) TCP probing $PingTarget:$PingPort via $ProbeMethod using $SampleCount samples 5 seconds apart" >> "$ScriptPath"/debug.log; fi
+	while [ "$SampleIndex" -le "$SampleCount" ]
+	do
+		ProbeStart=$(timems)
+		tcpportprobe "$PingTarget" "$PingPort"
+		ProbeExitCode=$?
+		ProbeOutput=$RUNWITHTIMEOUT_LAST_OUTPUT
+		if [ "$DEBUG" -eq 1 ]
+		then
+			if [ -n "$ProbeOutput" ]
+			then
+				echo -e "$ScriptStartTime-$(date +%T]) TCP sample $SampleIndex/$SampleCount raw output via $ProbeMethod ($TCPProbeLastCommand):\n$ProbeOutput" >> "$ScriptPath"/debug.log
+			else
+				echo -e "$ScriptStartTime-$(date +%T]) TCP sample $SampleIndex/$SampleCount raw output via $ProbeMethod ($TCPProbeLastCommand): <empty>" >> "$ScriptPath"/debug.log
+			fi
+		fi
+		if [ "$ProbeExitCode" -eq 0 ]
+		then
+			ProbeEnd=$(timems)
+			ProbeRTT=$(( ProbeEnd - ProbeStart ))
+			if [ "$ProbeRTT" -lt 0 ]
+			then
+				ProbeRTT=0
+			fi
+			RTTSum=$(( RTTSum + ProbeRTT ))
+			SuccessCount=$(( SuccessCount + 1 ))
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) TCP sample $SampleIndex/$SampleCount success for $PingTarget:$PingPort RTT ${ProbeRTT}ms exit code $ProbeExitCode" >> "$ScriptPath"/debug.log; fi
+		else
+			FailCount=$(( FailCount + 1 ))
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) TCP sample $SampleIndex/$SampleCount failed for $PingTarget:$PingPort exit code $ProbeExitCode" >> "$ScriptPath"/debug.log; fi
+		fi
+		if [ "$SampleIndex" -lt "$SampleCount" ]
+		then
+			sleep 5
+		fi
+		SampleIndex=$(( SampleIndex + 1 ))
+	done
+	PACKET_LOSS=$(awk -v fail="$FailCount" -v total="$SampleCount" 'BEGIN { printf "%18.0f", (fail * 100) / total }' | xargs)
+	if [ "$SuccessCount" -gt 0 ]
+	then
+		AVG_RTT=$(awk -v sum="$RTTSum" -v success="$SuccessCount" 'BEGIN { printf "%18.0f", sum / success }' | xargs)
+	else
+		AVG_RTT="0"
+	fi
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) TCP packet loss: $PACKET_LOSS AVG_RTT: $AVG_RTT" >> "$ScriptPath"/debug.log; fi
+	echo "$TargetName,$OutputTarget,$PACKET_LOSS,$AVG_RTT;" >> "$ScriptPath"/ping.txt
+}
+
+# Function used to perform outgoing PING tests
+function pingstatus() {
+	local TargetName=$1
+	local PingTarget=$2
+	local PingPort=$3
+	if ! [[ "$TargetName" =~ ^[A-Za-z0-9._-]+$ ]]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target name value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	if ! [[ "$PingTarget" =~ ^[A-Za-z0-9.:_-]+$ ]]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING target value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	if [ -n "$PingPort" ] && ( ! [[ "$PingPort" =~ ^[0-9]+$ ]] || (( PingPort < 1 || PingPort > 65535 )) )
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING port value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	if ! [[ "$OutgoingPingsCount" =~ ^[0-9]+$ ]] || (( OutgoingPingsCount < 10 || OutgoingPingsCount > 40 ))
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid PING count value" >> "$ScriptPath"/debug.log; fi
+		exit 1
+	fi
+	if [ -n "$PingPort" ]
+	then
+		tcppingstatus "$TargetName" "$PingTarget" "$PingPort"
+	else
+		icmppingstatus "$TargetName" "$PingTarget"
+	fi
+}
+
 # Check if the agent needs to run Outgoing PING tests
 if [ "$1" == "ping" ]
 then
-	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Starting PING: $2 ($3) $OutgoingPingsCount times" >> "$ScriptPath"/debug.log; fi
-	pingstatus "$2" "$3"
+	if [ -n "$4" ]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Starting TCP PING: $2 ($3:$4) sampled from OutgoingPingsCount=$OutgoingPingsCount" >> "$ScriptPath"/debug.log; fi
+	else
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Starting PING: $2 ($3) $OutgoingPingsCount times" >> "$ScriptPath"/debug.log; fi
+	fi
+	pingstatus "$2" "$3" "$4"
 	exit 1
 fi
 
@@ -185,7 +483,12 @@ then
 	for i in "${OutgoingPingsArray[@]}"
 	do
 		IFS=',' read -r -a OutgoingPing <<< "$i"
-		bash "$ScriptPath"/hetrixtools_agent.sh ping "${OutgoingPing[0]}" "${OutgoingPing[1]}" & 
+		if [ "${#OutgoingPing[@]}" -eq 2 ] || [ "${#OutgoingPing[@]}" -eq 3 ]
+		then
+			bash "$ScriptPath"/hetrixtools_agent.sh ping "${OutgoingPing[0]}" "${OutgoingPing[1]}" "${OutgoingPing[2]}" &
+		else
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Invalid OutgoingPings entry: $i" >> "$ScriptPath"/debug.log; fi
+		fi
 	done
 fi
 
@@ -285,7 +588,7 @@ if [ $? -ne 0 ] || [ -z "$df_mount_output" ]
 then
 	df_mount_output=$(timeout 3 df -l 2>/dev/null)
 fi
-for i in $(echo "$df_mount_output" | awk '$1 ~ /\// {print $(NF)}')
+for i in $(echo "$df_mount_output" | filterignoreddisks | awk '$1 ~ /\// {print $(NF)}')
 do
 	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
@@ -354,7 +657,27 @@ do
 	# Get vmstat
 	VMSTAT=$(vmstat "$CollectEveryXSeconds" 2 | tail -1)
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) $VMSTAT" >> "$ScriptPath"/debug.log; fi
-	
+
+	# Read /proc/meminfo
+	read -r aRAMTotal aRAMFree aRAMAvailable aRAMHasAvailable aRAMBuffRaw aRAMCacheRaw aRAMShmem aRAMSReclaimable aRAMSwapTotal aRAMSwapFree < <(awk '
+		BEGIN {
+			memtotal=0; memfree=0; memavailable=0; buffers=0; cached=0;
+			memavailable_found=0; shmem=0; sreclaimable=0; swaptotal=0; swapfree=0;
+		}
+		/^MemTotal:/ { memtotal=$2 }
+		/^MemFree:/ { memfree=$2 }
+		/^MemAvailable:/ { memavailable=$2; memavailable_found=1 }
+		/^Buffers:/ { buffers=$2 }
+		/^Cached:/ { cached=$2 }
+		/^Shmem:/ { shmem=$2 }
+		/^SReclaimable:/ { sreclaimable=$2 }
+		/^SwapTotal:/ { swaptotal=$2 }
+		/^SwapFree:/ { swapfree=$2 }
+		END {
+			print memtotal, memfree, memavailable, memavailable_found, buffers, cached, shmem, sreclaimable, swaptotal, swapfree
+		}
+	' /proc/meminfo)
+
 	# CPU usage
 	CPU=$(echo "$VMSTAT" | awk '{print 100 - $15}')
 	tCPU=$(echo | awk "{print $tCPU + $CPU}")
@@ -393,33 +716,72 @@ do
 	tloadavg15=$(echo | awk "{print $tloadavg15 + $loadavg15}")
 
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15" >> "$ScriptPath"/debug.log; fi
-	
-	# RAM usage
-	aRAM=$(echo "$VMSTAT" | awk '{print $4 + $5 + $6}')
-	bRAM=$(grep "^MemTotal:" /proc/meminfo | awk '{print $2}')
-	RAM=$(echo | awk "{print $aRAM * 100 / $bRAM}")
-	RAM=$(echo | awk "{print 100 - $RAM}")
+
+	if [ "$aRAMHasAvailable" -eq 1 ]
+	then
+		aRAMUsed=$(( aRAMTotal - aRAMAvailable ))
+		if [ "$aRAMUsed" -lt 0 ]
+		then
+			aRAMUsed=0
+		fi
+
+		aRAMCacheReclaimable=$(( aRAMCacheRaw + aRAMSReclaimable - aRAMShmem ))
+		if [ "$aRAMCacheReclaimable" -lt 0 ]
+		then
+			aRAMCacheReclaimable=0
+		fi
+
+		aRAMReclaimableShown=$(( aRAMAvailable - aRAMFree ))
+		if [ "$aRAMReclaimableShown" -lt 0 ]
+		then
+			aRAMReclaimableShown=0
+		fi
+		aRAMReclaimableTotal=$(( aRAMBuffRaw + aRAMCacheReclaimable ))
+		if [ "$aRAMReclaimableShown" -gt "$aRAMReclaimableTotal" ]
+		then
+			aRAMReclaimableShown=$aRAMReclaimableTotal
+		fi
+
+		if [ "$aRAMReclaimableTotal" -gt 0 ]
+		then
+			aRAMBuffShown=$(( aRAMReclaimableShown * aRAMBuffRaw / aRAMReclaimableTotal ))
+			aRAMCacheShown=$(( aRAMReclaimableShown - aRAMBuffShown ))
+		else
+			aRAMBuffShown=0
+			aRAMCacheShown=0
+		fi
+	else
+		aRAMUsed=$(( aRAMTotal - aRAMFree - aRAMBuffRaw - aRAMCacheRaw ))
+		if [ "$aRAMUsed" -lt 0 ]
+		then
+			aRAMUsed=0
+		fi
+		aRAMBuffShown=$aRAMBuffRaw
+		aRAMCacheShown=$aRAMCacheRaw
+	fi
+
+	RAM=$(echo | awk "{print $aRAMUsed * 100 / $aRAMTotal}")
 	tRAM=$(echo | awk "{print $tRAM + $RAM}")
 
 	# RAM swap usage
-	aRAMSwap=$(echo "$VMSTAT" | awk '{print $3}')
-	cRAM=$(grep "^SwapTotal:" /proc/meminfo | awk '{print $2}')
-	if [ "$cRAM" -gt 0 ]
+	aRAMSwapUsed=$(( aRAMSwapTotal - aRAMSwapFree ))
+	if [ "$aRAMSwapUsed" -lt 0 ]
 	then
-		RAMSwap=$(echo | awk "{print $aRAMSwap * 100 / $cRAM}")
+		aRAMSwapUsed=0
+	fi
+	if [ "$aRAMSwapTotal" -gt 0 ]
+	then
+		RAMSwap=$(echo | awk "{print $aRAMSwapUsed * 100 / $aRAMSwapTotal}")
 	else
 		RAMSwap=0
 	fi
 	tRAMSwap=$(echo | awk "{print $tRAMSwap + $RAMSwap}")
-	
-	# RAM buffers usage
-	aRAMBuff=$(echo "$VMSTAT" | awk '{print $5}')
-	RAMBuff=$(echo | awk "{print $aRAMBuff * 100 / $bRAM}")
+
+	RAMBuff=$(echo | awk "{print $aRAMBuffShown * 100 / $aRAMTotal}")
 	tRAMBuff=$(echo | awk "{print $tRAMBuff + $RAMBuff}")
-	
+
 	# RAM cache usage
-	aRAMCache=$(echo "$VMSTAT" | awk '{print $6}')
-	RAMCache=$(echo | awk "{print $aRAMCache * 100 / $bRAM}")
+	RAMCache=$(echo | awk "{print $aRAMCacheShown * 100 / $aRAMTotal}")
 	tRAMCache=$(echo | awk "{print $tRAMCache + $RAMCache}")
 
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAM: $RAM Swap: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache" >> "$ScriptPath"/debug.log; fi
@@ -693,13 +1055,13 @@ loadavg15=$(echo | awk "{print $tloadavg15 / $X}")
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) CPU Model: $CPUModel Sockets: $CPUSockets Cores: $CPUCores Threads: $CPUThreads Speed: $CPUSpeed CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15" >> "$ScriptPath"/debug.log; fi
 
 # RAM size
-RAMSize=$(grep ^MemTotal: /proc/meminfo | awk '{print $2}')
+RAMSize=$aRAMTotal
 
 # RAM Usage
 RAM=$(echo | awk "{print $tRAM / $X}")
 
 # RAM swap size
-RAMSwapSize=$(grep "^SwapTotal:" /proc/meminfo | awk '{print $2}')
+RAMSwapSize=$aRAMSwapTotal
 
 # RAM swap usage
 if [ "$RAMSwapSize" -gt 0 ]
@@ -723,7 +1085,7 @@ if [ $? -ne 0 ] || [ -z "$df_inodes_output" ]
 then
 	df_inodes_output=$(timeout 3 df -l -Ti 2>/dev/null)
 fi
-INODEs=$(echo -ne "$(echo "$df_inodes_output" | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
+INODEs=$(echo -ne "$(echo "$df_inodes_output" | sed 1d | filterignoreddisks | awk '{print $(NF)","$3","$4","$5";"}')" | tr -d '\n\r\t ' | base64 | tr -d '\n\r\t ')
 
 # Disks IOPS
 IOPS=""
@@ -908,7 +1270,7 @@ if [ $? -ne 0 ] || [ -z "$df_disk_usage" ]
 then
 	df_disk_usage=$(timeout 3 df -l -TPB1 2>/dev/null)
 fi
-IFS=$'\n' read -d '' -r -a DISKsArray < <(printf '%s\n' "$df_disk_usage" | sed 1d | grep -v -E 'tmpfs' | awk '{print $(NF)","$2","$3","$4","$5";"}')
+IFS=$'\n' read -d '' -r -a DISKsArray < <(printf '%s\n' "$df_disk_usage" | sed 1d | filterignoreddisks | awk '{print $(NF)","$2","$3","$4","$5";"}')
 for i in "${DISKsArray[@]}"
 do
 	IFS=',' read -r mount_point filesystem_type total_size used_size available_size <<< "$i"
