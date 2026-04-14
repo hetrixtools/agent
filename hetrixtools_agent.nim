@@ -432,19 +432,70 @@ proc runAgent(configPath: string, logPath: string, oneShot: bool, noPost: bool) 
     writeAndPost(payload, logPath, cfg.securedConnection, noPost)
     sleep(secondsToNextMinute() * 1000)
 
+proc printUsage(programName: string) =
+  echo fmt"HetrixTools Linux Agent v{Version}"
+  echo ""
+  echo "Usage:"
+  echo fmt"  {programName} [options]"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help           Show this help message and exit."
+  echo "  --once               Run one collection cycle, then exit."
+  echo "  --no-post            Do not post metrics; only write the local log payload."
+  echo "  --config=PATH        Path to configuration file."
+  echo "  --config PATH        Path to configuration file."
+  echo "  --log=PATH           Path to output log payload file."
+  echo "  --log PATH           Path to output log payload file."
+  echo ""
+  echo fmt"Defaults: --config={DefaultConfigPath} --log={DefaultLogPath}"
+
 when isMainModule:
   var
     configPath = DefaultConfigPath
     logPath = DefaultLogPath
     oneShot = false
     noPost = false
-  for arg in commandLineParams():
-    if arg == "--once":
+  let args = commandLineParams()
+  let programName = getAppFilename().extractFilename()
+  var i = 0
+  while i < args.len:
+    let arg = args[i]
+    if arg == "-h" or arg == "--help":
+      printUsage(programName)
+      quit(0)
+    elif arg == "--once":
       oneShot = true
     elif arg == "--no-post":
       noPost = true
+    elif arg == "--config":
+      if i + 1 >= args.len:
+        stderr.writeLine("ERROR: Missing value for --config.")
+        printUsage(programName)
+        quit(1)
+      inc i
+      configPath = args[i]
     elif arg.startsWith("--config="):
       configPath = arg.split("=", maxsplit = 1)[1]
+      if configPath.len == 0:
+        stderr.writeLine("ERROR: Empty value for --config.")
+        printUsage(programName)
+        quit(1)
+    elif arg == "--log":
+      if i + 1 >= args.len:
+        stderr.writeLine("ERROR: Missing value for --log.")
+        printUsage(programName)
+        quit(1)
+      inc i
+      logPath = args[i]
     elif arg.startsWith("--log="):
       logPath = arg.split("=", maxsplit = 1)[1]
+      if logPath.len == 0:
+        stderr.writeLine("ERROR: Empty value for --log.")
+        printUsage(programName)
+        quit(1)
+    else:
+      stderr.writeLine(fmt"ERROR: Unknown argument '{arg}'.")
+      printUsage(programName)
+      quit(1)
+    inc i
   runAgent(configPath, logPath, oneShot, noPost)
