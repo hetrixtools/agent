@@ -2,6 +2,29 @@
 
 Documentation available here: https://docs.hetrixtools.com/category/server-monitor/
 
+## Nim Daemon Rewrite (WIP)
+
+- `hetrixtools_agent.nim` is a compiled Nim implementation of the Linux agent.
+- It runs as a long-running daemon process (systemd service), replacing cron/timer one-shot execution.
+- Installer/update scripts keep the existing argument compatibility while deploying the Nim daemon service.
+- Build locally with:
+
+```bash
+./scripts/build_nim_agent.sh
+```
+
+- Run one-shot payload generation for testing:
+
+```bash
+./hetrixtools_agent --once --no-post --config=./hetrixtools.cfg --log=./hetrixtools_agent.log
+```
+
+- Parity test (core metrics):
+
+```bash
+python3 tests/parity_test.py
+```
+
 ### Changelog
 
 #### Version 2.3.8:
@@ -134,4 +157,3 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 #### Version 1.x:
 https://github.com/hetrixtools/agent/tree/1.6.x
-
