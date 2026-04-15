@@ -1,0 +1,165 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Nim
+        uses: jiro4989/setup-nim-action@v2
+        with:
+          nim-version: "2.2.8"
+
+      - name: Install Build Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            libssl-dev \
+            zlib1g-dev
+
+          # --- arm64 cross-compile libraries via multiarch ---
+          if dpkg --print-foreign-architectures | grep -qx arm64; then
+            echo "arm64 architecture already added"
+          else
+            sudo dpkg --add-architecture arm64
+
+            if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+              codename="$(lsb_release -cs)"
+              sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
+
+              cat <<EOF | sudo tee /etc/apt/sources.list.d/amd64.sources
+          Types: deb
+          URIs: http://azure.archive.ubuntu.com/ubuntu/
+          Suites: ${codename} ${codename}-updates ${codename}-backports
+          Components: main restricted universe multiverse
+          Architectures: amd64
+
+          Types: deb
+          URIs: http://security.ubuntu.com/ubuntu/
+          Suites: ${codename}-security
+          Components: main restricted universe multiverse
+          Architectures: amd64
+          EOF
+              cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64.sources
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports/
+          Suites: ${codename} ${codename}-updates ${codename}-backports ${codename}-security
+          Components: main restricted universe multiverse
+          Architectures: arm64
+          EOF
+            elif [ -f /etc/apt/sources.list ]; then
+              sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+              sudo sed -i 's/^deb-src /deb-src [arch=amd64] /' /etc/apt/sources.list
+              codename="$(lsb_release -cs)"
+              sudo tee -a /etc/apt/sources.list >/dev/null <<EOF
+          deb [arch=arm64] http://deb.debian.org/debian ${codename} main
+          deb [arch=arm64] http://deb.debian.org/debian ${codename}-updates main
+          deb [arch=arm64] http://security.debian.org/debian-security ${codename}-security main
+          EOF
+            fi
+
+            sudo apt-get update
+          fi
+
+          sudo apt-get install -y libz-dev:arm64 libssl-dev:arm64
+
+      - name: Build Linux Binaries
+        run: |
+          bash scripts/build_multiarch.sh dist
+          ls -lh dist/
+
+      - name: Run Parity Test
+        run: |
+          python3 tests/parity_test.py
+
+      - name: Run Dummy Ingest Smoke Test
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKDIR="$(mktemp -d)"
+          CFG="$WORKDIR/hetrixtools.cfg"
+          LOG="$WORKDIR/hetrixtools_agent.log"
+          DECODED="$WORKDIR/decoded.json"
+
+          cp hetrixtools.cfg "$CFG"
+          sed -i 's/^SID=""/SID="0123456789abcdef0123456789abcdef"/' "$CFG"
+
+          python3 - <<'PY' "$DECODED" &
+          import base64
+          import gzip
+          import json
+          import sys
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from urllib.parse import parse_qs
+
+          out_path = sys.argv[1]
+
+          class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+              length = int(self.headers.get("Content-Length", "0"))
+              raw = self.rfile.read(length).decode("utf-8", errors="replace")
+              data = parse_qs(raw, keep_blank_values=True, strict_parsing=True)
+              encoded = data["j"][0]
+              payload = gzip.decompress(base64.b64decode(encoded)).decode("utf-8")
+              parsed = json.loads(payload)
+              with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(parsed, f, indent=2)
+                f.write("\n")
+              body = b'{"ok":true}\n'
+              self.send_response(200)
+              self.send_header("Content-Type", "application/json")
+              self.send_header("Content-Length", str(len(body)))
+              self.end_headers()
+              self.wfile.write(body)
+
+            def log_message(self, format, *args):  # noqa: A003
+              return
+
+          httpd = HTTPServer(("127.0.0.1", 18080), Handler)
+          httpd.handle_request()
+          PY
+          SERVER_PID=$!
+
+          dist/hetrixtools_agent_linux_amd64 --once --no-post --config="$CFG" --log="$LOG"
+          curl -fsS -X POST --data-binary @"$LOG" http://127.0.0.1:18080/v2/ >/dev/null
+          wait "$SERVER_PID"
+
+          python3 - <<'PY' "$DECODED"
+          import json
+          import sys
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+            data = json.load(f)
+          assert data.get("SID") == "0123456789abcdef0123456789abcdef"
+          assert data.get("version"), "missing version"
+          print("Dummy ingest smoke test passed.")
+          PY
+
+      - name: Package Binaries
+        run: |
+          cd dist
+          tar -czf hetrixtools_agent_linux_amd64.tar.gz hetrixtools_agent_linux_amd64
+          tar -czf hetrixtools_agent_linux_arm64.tar.gz hetrixtools_agent_linux_arm64
+          ls -lh *.tar.gz
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/hetrixtools_agent_linux_amd64.tar.gz
+            dist/hetrixtools_agent_linux_arm64.tar.gz
