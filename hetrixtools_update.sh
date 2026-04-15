@@ -101,7 +101,10 @@ chmod 700 /etc/hetrixtools/hetrixtools_update.sh /etc/hetrixtools/hetrixtools_un
 AGENT_ARCH=$(detect_arch)
 install_prebuilt_agent "$AGENT_ARCH"
 
-SERVICE_USER=$(systemctl cat hetrixtools_agent.service 2>/dev/null | awk -F= '/^User=/ {print $2; exit}')
+SERVICE_USER=""
+if systemctl cat hetrixtools_agent.service >/dev/null 2>&1; then
+  SERVICE_USER=$(systemctl cat hetrixtools_agent.service 2>/dev/null | awk -F= '/^User=/ {print $2; exit}')
+fi
 if [ -z "$SERVICE_USER" ]; then
   SERVICE_USER=$(stat -c '%U' /etc/hetrixtools/hetrixtools.cfg 2>/dev/null || echo root)
 fi
