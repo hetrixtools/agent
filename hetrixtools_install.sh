@@ -3,6 +3,10 @@ set -euo pipefail
 
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+GITHUB_OWNER="dictcp"
+GITHUB_REPO="hetrixtools-agent"
+RELEASE_TAG="v0.0.1"
+
 github_wget() {
   local url=${!#}
   if ! wget -4 "$@"; then
@@ -13,6 +17,54 @@ github_wget() {
     fi
   fi
   return 0
+}
+
+github_raw_url() {
+  local branch=$1
+  local file=$2
+  echo "https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REPO/$branch/$file"
+}
+
+github_release_url() {
+  local arch=$1
+  echo "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/download/$RELEASE_TAG/hetrixtools_agent_linux_${arch}.tar.gz"
+}
+
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64)
+      echo "amd64"
+      ;;
+    aarch64|arm64)
+      echo "arm64"
+      ;;
+    *)
+      echo "ERROR: Unsupported architecture: $(uname -m). Supported: amd64, arm64." >&2
+      return 1
+      ;;
+  esac
+}
+
+install_prebuilt_agent() {
+  local arch=$1
+  local url
+  local extracted_bin
+  local tmpdir
+
+  url=$(github_release_url "$arch")
+  extracted_bin="hetrixtools_agent_linux_${arch}"
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+
+  github_wget -t 1 -T 30 -qO "$tmpdir/hetrixtools_agent.tar.gz" "$url"
+  tar -xzf "$tmpdir/hetrixtools_agent.tar.gz" -C "$tmpdir"
+
+  if [ ! -f "$tmpdir/$extracted_bin" ]; then
+    echo "ERROR: Release archive did not contain $extracted_bin." >&2
+    return 1
+  fi
+
+  install -m 700 "$tmpdir/$extracted_bin" /etc/hetrixtools/hetrixtools_agent
 }
 
 BRANCH="master"
@@ -45,17 +97,21 @@ if ! command -v wget >/dev/null 2>&1; then
   echo "ERROR: wget is required."
   exit 1
 fi
+if ! command -v tar >/dev/null 2>&1; then
+  echo "ERROR: tar is required."
+  exit 1
+fi
 
-if ! github_wget --spider -q "https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.nim"; then
-  echo "ERROR: Branch $BRANCH does not contain Nim agent sources." >&2
+if ! github_wget --spider -q "$(github_raw_url "$BRANCH" hetrixtools.cfg)"; then
+  echo "ERROR: Branch $BRANCH does not contain installer assets." >&2
   exit 1
 fi
 
 rm -rf /etc/hetrixtools
 mkdir -p /etc/hetrixtools
 
-for f in hetrixtools.cfg hetrixtools_agent.nim hetrixtools_update.sh hetrixtools_uninstall.sh; do
-  github_wget -t 1 -T 30 -qO "/etc/hetrixtools/$f" "https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/$f"
+for f in hetrixtools.cfg hetrixtools_update.sh hetrixtools_uninstall.sh; do
+  github_wget -t 1 -T 30 -qO "/etc/hetrixtools/$f" "$(github_raw_url "$BRANCH" "$f")"
 done
 
 chmod 700 /etc/hetrixtools
@@ -88,14 +144,8 @@ if [ "$RUN_AS_ROOT" = "1" ]; then
   SERVICE_USER="root"
 fi
 
-if ! command -v nim >/dev/null 2>&1; then
-  echo "ERROR: Nim compiler (nim) is required on the target server to build the agent." >&2
-  echo "Install Nim and re-run this installer." >&2
-  exit 1
-fi
-
-nim c -d:release --opt:speed --mm:orc -o:/etc/hetrixtools/hetrixtools_agent /etc/hetrixtools/hetrixtools_agent.nim
-chmod 700 /etc/hetrixtools/hetrixtools_agent
+AGENT_ARCH=$(detect_arch)
+install_prebuilt_agent "$AGENT_ARCH"
 
 if [ "$SERVICE_USER" = "hetrixtools" ]; then
   chown -R hetrixtools:hetrixtools /etc/hetrixtools
