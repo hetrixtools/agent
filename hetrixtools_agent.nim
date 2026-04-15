@@ -1,4 +1,7 @@
-import std/[base64, json, os, osproc, parsecfg, random, strformat, strutils, tables, times, uri]
+import std/[base64, httpclient, json, net, os, osproc, parsecfg, strformat, strutils, tables, times, uri]
+
+when defined(posix):
+  {.passL: "-lz".}
 
 const
   Version = "2.3.8"
@@ -175,6 +178,7 @@ proc getCpuModel(): string =
   for ln in readLinesSafe("/proc/cpuinfo"):
     if ln.startsWith("model name"):
       return ln.split(":", maxsplit = 1)[1].strip()
+  # Fallback to lscpu
   cmdOut("lscpu | awk -F': ' '/Model name/ {print $2; exit}'")
 
 proc getCpuCores(): int =
@@ -394,14 +398,125 @@ proc buildPayload(cfg: AgentConfig, configPath: string): JsonNode =
     "rps2": ""
   }
 
+type
+  ZAllocFunc = proc(opaque: pointer, items, size: cuint): pointer {.cdecl.}
+  ZFreeFunc = proc(opaque, address: pointer) {.cdecl.}
+  ZStream = object
+    next_in: ptr uint8
+    avail_in: cuint
+    total_in: culong
+    next_out: ptr uint8
+    avail_out: cuint
+    total_out: culong
+    msg: cstring
+    state: pointer
+    zalloc: ZAllocFunc
+    zfree: ZFreeFunc
+    opaque: pointer
+    data_type: cint
+    adler: culong
+    reserved: culong
+
+const
+  ZNoFlush = 0.cint
+  ZFinish = 4.cint
+  ZOk = 0.cint
+  ZStreamEnd = 1.cint
+  ZDeflated = 8.cint
+  ZDefaultCompression = -1.cint
+  ZDefaultStrategy = 0.cint
+  ZDefaultWindowBits = 15.cint
+  ZGzipWindowBits = ZDefaultWindowBits + 16
+  ZDefaultMemLevel = 8.cint
+  ZBufSize = 16384
+
+proc zlibVersion(): cstring {.cdecl, importc.}
+proc deflateInit2(
+  strm: ptr ZStream,
+  level, zmethod, windowBits, memLevel, strategy: cint,
+  version: cstring,
+  streamSize: cint
+): cint {.cdecl, importc: "deflateInit2_".}
+proc deflate(strm: ptr ZStream, flush: cint): cint {.cdecl, importc.}
+proc deflateEnd(strm: ptr ZStream): cint {.cdecl, importc.}
+
+proc gzipCompress(input: string): string =
+  var stream: ZStream
+  stream.zalloc = nil
+  stream.zfree = nil
+  stream.opaque = nil
+  if input.len > 0:
+    stream.next_in = cast[ptr uint8](unsafeAddr input[0])
+    stream.avail_in = cuint(input.len)
+  else:
+    stream.next_in = nil
+    stream.avail_in = 0
+
+  let initCode = deflateInit2(
+    addr stream,
+    ZDefaultCompression,
+    ZDeflated,
+    ZGzipWindowBits,
+    ZDefaultMemLevel,
+    ZDefaultStrategy,
+    zlibVersion(),
+    cint(sizeof(ZStream))
+  )
+  if initCode != ZOk:
+    return ""
+
+  var outChunk = newString(ZBufSize)
+  while true:
+    stream.next_out = cast[ptr uint8](addr outChunk[0])
+    stream.avail_out = cuint(ZBufSize)
+    let flushMode = if stream.avail_in == 0: ZFinish else: ZNoFlush
+    let code = deflate(addr stream, flushMode)
+    if code != ZOk and code != ZStreamEnd:
+      discard deflateEnd(addr stream)
+      return ""
+
+    let produced = ZBufSize - int(stream.avail_out)
+    if produced > 0:
+      result.add(outChunk[0 ..< produced])
+    if code == ZStreamEnd:
+      break
+
+  discard deflateEnd(addr stream)
+
 proc gzipBase64(s: string): string =
-  let tmpPath = joinPath(getTempDir(), fmt"hetrixtools_payload_{epochTime().int}_{rand(100000)}.json")
-  writeFile(tmpPath, s)
+  encode(gzipCompress(s))
+
+proc postLogData(logPath: string, securedConnection: int): bool =
+  if not fileExists(logPath):
+    return false
+  let body = readFile(logPath)
+  let postUrl =
+    when defined(ssl):
+      "https://sm.hetrixtools.net/v2/"
+    else:
+      if securedConnection > 0:
+        "https://sm.hetrixtools.net/v2/"
+      else:
+        "http://sm.hetrixtools.net/v2/"
+  var client: HttpClient
+  when defined(ssl):
+    if securedConnection > 0:
+      client = newHttpClient(timeout = 15000)
+    else:
+      let tlsCtx = newContext(verifyMode = CVerifyNone)
+      client = newHttpClient(timeout = 15000, sslContext = tlsCtx)
+  else:
+    client = newHttpClient(timeout = 15000)
+  client.headers = newHttpHeaders({
+    "Content-Type": "application/x-www-form-urlencoded"
+  })
   try:
-    result = cmdOut(fmt"gzip -cf {tmpPath.quoteShell} | base64 -w 0")
+    discard client.request(postUrl, httpMethod = HttpPost, body = body)
+    result = true
+  except CatchableError:
+    result = false
   finally:
-    if fileExists(tmpPath):
-      removeFile(tmpPath)
+    client.close()
 
 proc writeAndPost(payload: JsonNode, logPath: string, securedConnection: int, noPost: bool) =
   let jsonRaw = $payload
@@ -409,8 +524,11 @@ proc writeAndPost(payload: JsonNode, logPath: string, securedConnection: int, no
   writeFile(logPath, "j=" & encoded & "\n")
   if noPost:
     return
-  let certOpt = if securedConnection > 0: "" else: "--no-check-certificate "
-  discard execCmd(fmt"wget --retry-connrefused --waitretry=1 -t 3 -T 15 -qO- --post-file={logPath} {certOpt}https://sm.hetrixtools.net/v2/ >/dev/null 2>&1")
+  for attempt in 0..<3:
+    if postLogData(logPath, securedConnection):
+      break
+    if attempt < 2:
+      sleepMs(1000)
 
 proc secondsToNextMinute(): int =
   let n = now()
