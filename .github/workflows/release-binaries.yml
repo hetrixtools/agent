@@ -32,41 +32,53 @@ jobs:
         run: |
           set -euo pipefail
 
-          install_if_available() {
-            for pkg in "$@"; do
-              if apt-cache show "$pkg" >/dev/null 2>&1; then
-                sudo apt-get install -y "$pkg"
-                echo "Installed: $pkg"
-                return 0
-              fi
-            done
-            return 1
-          }
-
           sudo apt-get update
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             libssl-dev \
             zlib1g-dev
 
-          # Prefer cross-dev packages when available on the current distro.
-          if ! install_if_available zlib1g-dev-arm64-cross libz-dev-arm64-cross; then
-            if ! dpkg --print-foreign-architectures | grep -qx arm64; then
-              sudo dpkg --add-architecture arm64
-              sudo apt-get update
+          # --- arm64 cross-compile libraries via multiarch ---
+          # Ubuntu 24.04+ and Debian 13+ removed *-arm64-cross packages.
+          # We use dpkg multiarch instead, but must add an arm64 apt source
+          # because the default Ubuntu mirror (azure.archive.ubuntu.com) does
+          # not serve arm64 binaries — only ports.ubuntu.com does.
+          # See: https://github.com/actions/runner-images/issues/10901
+
+          if dpkg --print-foreign-architectures | grep -qx arm64; then
+            echo "arm64 architecture already added"
+          else
+            sudo dpkg --add-architecture arm64
+
+            # Detect distro family to write the correct arm64 source
+            if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+              # Ubuntu 24.04+ uses DEB822 .sources format
+              codename="$(lsb_release -cs)"
+              sudo tee /etc/apt/sources.list.d/arm64-ports.sources >/dev/null <<EOF
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports/
+          Suites: ${codename} ${codename}-updates ${codename}-security
+          Components: main restricted universe multiverse
+          Architectures: arm64
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          EOF
+            elif [ -f /etc/apt/sources.list ]; then
+              # Debian or older Ubuntu with traditional sources.list
+              # Restrict existing sources to amd64 to avoid 404s
+              sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+              sudo sed -i 's/^deb-src /deb-src [arch=amd64] /' /etc/apt/sources.list
+              codename="$(lsb_release -cs)"
+              sudo tee -a /etc/apt/sources.list >/dev/null <<EOF
+          deb [arch=arm64] http://deb.debian.org/debian ${codename} main
+          deb [arch=arm64] http://deb.debian.org/debian ${codename}-updates main
+          deb [arch=arm64] http://security.debian.org/debian-security ${codename}-security main
+          EOF
             fi
-            sudo apt-get install -y libz-dev:arm64
-            echo "Installed fallback: libz-dev:arm64"
+
+            sudo apt-get update
           fi
 
-          if ! install_if_available libssl-dev-arm64-cross; then
-            if ! dpkg --print-foreign-architectures | grep -qx arm64; then
-              sudo dpkg --add-architecture arm64
-              sudo apt-get update
-            fi
-            sudo apt-get install -y libssl-dev:arm64
-            echo "Installed fallback: libssl-dev:arm64"
-          fi
+          sudo apt-get install -y libz-dev:arm64 libssl-dev:arm64
 
       - name: Resolve Release Tag
         id: meta
