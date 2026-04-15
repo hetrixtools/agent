@@ -34,6 +34,12 @@ jobs:
             zlib1g-dev
 
           # --- arm64 cross-compile libraries via multiarch ---
+          # Ubuntu 24.04+ and Debian 13+ removed *-arm64-cross packages.
+          # We use dpkg multiarch instead, but must add an arm64 apt source
+          # because the default Ubuntu mirror (azure.archive.ubuntu.com) does
+          # not serve arm64 binaries — only ports.ubuntu.com does.
+          # See: https://github.com/actions/runner-images/issues/10901
+
           if dpkg --print-foreign-architectures | grep -qx arm64; then
             echo "arm64 architecture already added"
           else
@@ -136,6 +142,7 @@ jobs:
           PY
           SERVER_PID=$!
 
+          # Generate a real payload with the built binary, then post it to dummy ingest.
           dist/hetrixtools_agent_linux_amd64 --once --no-post --config="$CFG" --log="$LOG"
           curl -fsS -X POST --data-binary @"$LOG" http://127.0.0.1:18080/v2/ >/dev/null
           wait "$SERVER_PID"
