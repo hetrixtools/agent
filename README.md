@@ -38,6 +38,20 @@ Documentation available here: <https://docs.hetrixtools.com/category/server-moni
   - `--config=PATH` or `--config PATH`: set config file path (default: `/etc/hetrixtools/hetrixtools.cfg`)
   - `--log=PATH` or `--log PATH`: set output payload log path (default: `/etc/hetrixtools/hetrixtools_agent.log`)
   - unknown options now fail with a clear error message and usage output
+
+- Required commands/dependencies:
+  - Runtime commands used by the Nim agent:
+    - `uname`, `whoami`, `df`, `lscpu`, `lsblk`, `ip`
+    - `awk`, `grep`, `sort`, `wc`, `cut`, `paste` (used in command pipelines)
+  - Runtime libraries:
+    - OpenSSL (for HTTPS posting, build uses `-d:ssl`)
+    - zlib (for in-memory gzip payload compression)
+  - Build requirements:
+    - `nim`, `gcc`
+    - for multi-arch build: `aarch64-linux-gnu-gcc` (or `aarch64-linux-musl-gcc`) with ARM64 zlib/ssl libs
+  - Test/debug helpers (optional):
+    - `python3` (parity tests and dummy ingest server)
+    - `curl` (manual post checks to dummy ingest server)
 - Parity test (core metrics):
 
 ```bash
@@ -55,4 +69,3 @@ python3 tests/parity_test.py
   - `rps1`, `rps2` (HTTP request-per-second checks)
 
 ### Changelog
-

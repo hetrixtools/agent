@@ -9,5 +9,13 @@ if ! command -v nim >/dev/null 2>&1; then
   exit 1
 fi
 
-nim c -d:release --opt:speed --mm:orc -o:"$OUT_BIN" "$ROOT_DIR/hetrixtools_agent.nim"
+# The Nim agent requires SSL for HTTPS posting and zlib for in-memory gzip.
+if ! echo 'int main(void){return 0;}' | gcc -x c - -lz -o /tmp/hetrixtools_zlib_check >/dev/null 2>&1; then
+  echo "ERROR: host zlib link check failed." >&2
+  echo "Install package: zlib1g-dev" >&2
+  exit 1
+fi
+rm -f /tmp/hetrixtools_zlib_check
+
+nim c -d:release -d:ssl --opt:speed --mm:orc -o:"$OUT_BIN" "$ROOT_DIR/hetrixtools_agent.nim"
 echo "Built: $OUT_BIN"
