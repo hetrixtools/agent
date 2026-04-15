@@ -37,6 +37,7 @@ type
     load1: float
     load5: float
     load15: float
+    iops: string
     nicRx: Table[string, float]
     nicTx: Table[string, float]
 
@@ -224,6 +225,59 @@ proc getInodesBase64(): string =
       entries.add(fmt"{p[^1]},{p[2]},{p[3]},{p[4]};")
   encode(entries.join(""))
 
+type
+  DiskMount = object
+    mountpoint: string
+    device: string
+
+proc detectDiskMounts(): seq[DiskMount] =
+  let output = cmdOut("df 2>/dev/null || df -l 2>/dev/null")
+  for ln in output.splitLines():
+    let p = ln.splitWhitespace()
+    if p.len < 6:
+      continue
+    if p[0] == "Filesystem" or not p[0].contains("/"):
+      continue
+    let mountpoint = p[^1]
+    let device = cmdOut(fmt"lsblk -l | grep -w {mountpoint.quoteShell} | awk '{{print $1; exit}}'")
+    result.add(DiskMount(mountpoint: mountpoint, device: device))
+
+proc readDiskstatsSectors(): Table[string, tuple[readSectors, writeSectors: int64]] =
+  result = initTable[string, tuple[readSectors, writeSectors: int64]]()
+  for ln in readLinesSafe("/proc/diskstats"):
+    let p = ln.splitWhitespace()
+    if p.len < 10:
+      continue
+    let dev = p[2]
+    result[dev] = (int64(parseIntSafe(p[5])), int64(parseIntSafe(p[9])))
+
+proc buildIopsBase64(
+  mounts: seq[DiskMount],
+  startStats, endStats: Table[string, tuple[readSectors, writeSectors: int64]],
+  elapsedSeconds: int
+): string =
+  var entries: seq[string] = @[]
+  let sec = max(1, elapsedSeconds)
+  for m in mounts:
+    var
+      startRead = 0'i64
+      startWrite = 0'i64
+      endRead = 0'i64
+      endWrite = 0'i64
+    if m.device.len > 0:
+      let startVals = startStats.getOrDefault(m.device, (0'i64, 0'i64))
+      let endVals = endStats.getOrDefault(m.device, (0'i64, 0'i64))
+      startRead = startVals.readSectors
+      startWrite = startVals.writeSectors
+      endRead = endVals.readSectors
+      endWrite = endVals.writeSectors
+    let readDelta = max(0'i64, endRead - startRead)
+    let writeDelta = max(0'i64, endWrite - startWrite)
+    let readBps = max(0'i64, (readDelta * 512'i64) div int64(sec))
+    let writeBps = max(0'i64, (writeDelta * 512'i64) div int64(sec))
+    entries.add(fmt"{m.mountpoint},{readBps},{writeBps};")
+  encode(entries.join(""))
+
 proc getIPv4Base64(nics: seq[string]): string =
   var entries: seq[string] = @[]
   for nic in nics:
@@ -266,6 +320,8 @@ proc collectSamples(cfg: AgentConfig, nics: seq[string]): StatSample =
     totalL1 = 0.0
     totalL5 = 0.0
     totalL15 = 0.0
+    diskMounts = detectDiskMounts()
+    diskStartStats = readDiskstatsSectors()
   result.nicRx = initTable[string, float]()
   result.nicTx = initTable[string, float]()
   for nic in nics:
@@ -321,6 +377,13 @@ proc collectSamples(cfg: AgentConfig, nics: seq[string]): StatSample =
   result.load1 = totalL1 / iterations.float
   result.load5 = totalL5 / iterations.float
   result.load15 = totalL15 / iterations.float
+  let diskEndStats = readDiskstatsSectors()
+  result.iops = buildIopsBase64(
+    diskMounts,
+    diskStartStats,
+    diskEndStats,
+    iterations * cfg.collectEveryXSeconds
+  )
   for nic in nics:
     result.nicRx[nic] = result.nicRx[nic] / iterations.float
     result.nicTx[nic] = result.nicTx[nic] / iterations.float
@@ -382,7 +445,7 @@ proc buildPayload(cfg: AgentConfig, configPath: string): JsonNode =
     "ramcache": $(stats.ramCache),
     "disks": getDiskUsageBase64(),
     "inodes": getInodesBase64(),
-    "iops": "",
+    "iops": stats.iops,
     "raid": "",
     "zp": "",
     "dh": "",
