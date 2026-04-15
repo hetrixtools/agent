@@ -54,13 +54,29 @@ jobs:
             if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
               # Ubuntu 24.04+ uses DEB822 .sources format
               codename="$(lsb_release -cs)"
-              sudo tee /etc/apt/sources.list.d/arm64-ports.sources >/dev/null <<EOF
+              # Remove the default Ubuntu sources that don't support ARM64
+              sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
+              
+              # Create proper deb822 format sources for both amd64 and arm64
+              cat <<EOF | sudo tee /etc/apt/sources.list.d/amd64.sources
+          Types: deb
+          URIs: http://azure.archive.ubuntu.com/ubuntu/
+          Suites: ${codename} ${codename}-updates ${codename}-backports
+          Components: main restricted universe multiverse
+          Architectures: amd64
+          
+          Types: deb
+          URIs: http://security.ubuntu.com/ubuntu/
+          Suites: ${codename}-security
+          Components: main restricted universe multiverse
+          Architectures: amd64
+          EOF
+              cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64.sources
           Types: deb
           URIs: http://ports.ubuntu.com/ubuntu-ports/
-          Suites: ${codename} ${codename}-updates ${codename}-security
+          Suites: ${codename} ${codename}-updates ${codename}-backports ${codename}-security
           Components: main restricted universe multiverse
           Architectures: arm64
-          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
           EOF
             elif [ -f /etc/apt/sources.list ]; then
               # Debian or older Ubuntu with traditional sources.list
