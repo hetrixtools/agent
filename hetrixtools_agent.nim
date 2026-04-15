@@ -553,14 +553,18 @@ proc postLogData(logPath: string, securedConnection: int): bool =
   if not fileExists(logPath):
     return false
   let body = readFile(logPath)
+  let overrideUrl = getEnv("HETRIXTOOLS_POST_URL", "").strip()
   let postUrl =
-    when defined(ssl):
-      "https://sm.hetrixtools.net/v2/"
+    if overrideUrl.len > 0:
+      overrideUrl
     else:
-      if securedConnection > 0:
+      when defined(ssl):
         "https://sm.hetrixtools.net/v2/"
       else:
-        "http://sm.hetrixtools.net/v2/"
+        if securedConnection > 0:
+          "https://sm.hetrixtools.net/v2/"
+        else:
+          "http://sm.hetrixtools.net/v2/"
   var client: HttpClient
   when defined(ssl):
     if securedConnection > 0:
@@ -576,7 +580,8 @@ proc postLogData(logPath: string, securedConnection: int): bool =
   try:
     discard client.request(postUrl, httpMethod = HttpPost, body = body)
     result = true
-  except CatchableError:
+  except CatchableError as e:
+    stderr.writeLine("ERROR: Failed to POST log data: " & e.msg)
     result = false
   finally:
     client.close()
