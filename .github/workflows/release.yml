@@ -29,26 +29,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf \
             libssl-dev \
             zlib1g-dev
 
-          # --- arm64 cross-compile libraries via multiarch ---
-          # Ubuntu 24.04+ and Debian 13+ removed *-arm64-cross packages.
-          # We use dpkg multiarch instead, but must add an arm64 apt source
+          # --- arm64/armhf cross-compile libraries via multiarch ---
+          # Ubuntu 24.04+ and Debian 13+ removed many *-cross library packages.
+          # We use dpkg multiarch instead, but must add arm64/armhf apt sources
           # because the default Ubuntu mirror (azure.archive.ubuntu.com) does
-          # not serve arm64 binaries — only ports.ubuntu.com does.
+          # not serve these ARM binaries — only ports.ubuntu.com does.
           # See: https://github.com/actions/runner-images/issues/10901
 
-          if dpkg --print-foreign-architectures | grep -qx arm64; then
-            echo "arm64 architecture already added"
-          else
-            sudo dpkg --add-architecture arm64
+          for arch in arm64 armhf; do
+            if dpkg --print-foreign-architectures | grep -qx "$arch"; then
+              echo "$arch architecture already added"
+            else
+              sudo dpkg --add-architecture "$arch"
+            fi
+          done
 
-            if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-              codename="$(lsb_release -cs)"
-              sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            codename="$(lsb_release -cs)"
+            sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
 
-              cat <<EOF | sudo tee /etc/apt/sources.list.d/amd64.sources
+            cat <<EOF | sudo tee /etc/apt/sources.list.d/amd64.sources
           Types: deb
           URIs: http://azure.archive.ubuntu.com/ubuntu/
           Suites: ${codename} ${codename}-updates ${codename}-backports
@@ -61,28 +65,30 @@ jobs:
           Components: main restricted universe multiverse
           Architectures: amd64
           EOF
-              cat <<EOF | sudo tee /etc/apt/sources.list.d/arm64.sources
+            cat <<EOF | sudo tee /etc/apt/sources.list.d/ports.sources
           Types: deb
           URIs: http://ports.ubuntu.com/ubuntu-ports/
           Suites: ${codename} ${codename}-updates ${codename}-backports ${codename}-security
           Components: main restricted universe multiverse
-          Architectures: arm64
+          Architectures: arm64 armhf
           EOF
-            elif [ -f /etc/apt/sources.list ]; then
-              sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
-              sudo sed -i 's/^deb-src /deb-src [arch=amd64] /' /etc/apt/sources.list
-              codename="$(lsb_release -cs)"
-              sudo tee -a /etc/apt/sources.list >/dev/null <<EOF
-          deb [arch=arm64] http://deb.debian.org/debian ${codename} main
-          deb [arch=arm64] http://deb.debian.org/debian ${codename}-updates main
-          deb [arch=arm64] http://security.debian.org/debian-security ${codename}-security main
+          elif [ -f /etc/apt/sources.list ]; then
+            sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+            sudo sed -i 's/^deb-src /deb-src [arch=amd64] /' /etc/apt/sources.list
+            codename="$(lsb_release -cs)"
+            sudo tee -a /etc/apt/sources.list >/dev/null <<EOF
+          deb [arch=arm64,armhf] http://deb.debian.org/debian ${codename} main
+          deb [arch=arm64,armhf] http://deb.debian.org/debian ${codename}-updates main
+          deb [arch=arm64,armhf] http://security.debian.org/debian-security ${codename}-security main
           EOF
-            fi
-
-            sudo apt-get update
           fi
 
-          sudo apt-get install -y libz-dev:arm64 libssl-dev:arm64
+          sudo apt-get update
+          sudo apt-get install -y \
+            libz-dev:arm64 \
+            libssl-dev:arm64 \
+            libz-dev:armhf \
+            libssl-dev:armhf
 
       - name: Build Linux Binaries
         run: |
@@ -161,6 +167,7 @@ jobs:
           cd dist
           tar -czf hetrixtools_agent_linux_amd64.tar.gz hetrixtools_agent_linux_amd64
           tar -czf hetrixtools_agent_linux_arm64.tar.gz hetrixtools_agent_linux_arm64
+          tar -czf hetrixtools_agent_linux_armv7.tar.gz hetrixtools_agent_linux_armv7
           ls -lh *.tar.gz
 
       - name: Create GitHub Release
@@ -170,3 +177,4 @@ jobs:
           files: |
             dist/hetrixtools_agent_linux_amd64.tar.gz
             dist/hetrixtools_agent_linux_arm64.tar.gz
+            dist/hetrixtools_agent_linux_armv7.tar.gz
