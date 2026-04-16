@@ -44,7 +44,7 @@ fi
 
 require_zlib_link gcc /tmp/hetrixtools_zlib_check "host" "zlib1g-dev"
 
-echo "[1/3] Building linux/amd64..."
+echo "[1/4] Building linux/amd64..."
 nim c -d:release -d:ssl --opt:speed --mm:orc \
   --os:linux --cpu:amd64 \
   --cc:gcc --gcc.exe:gcc \
@@ -59,7 +59,7 @@ fi
 
 require_zlib_link "$ARM64_CC" /tmp/hetrixtools_zlib_check_arm64 "ARM64" "libz-dev:arm64"
 
-echo "[2/3] Building linux/arm64 using $ARM64_CC..."
+echo "[2/4] Building linux/arm64 using $ARM64_CC..."
 nim c -d:release -d:ssl --opt:speed --mm:orc \
   --os:linux --cpu:arm64 \
   --cc:gcc --gcc.exe:"$ARM64_CC" \
@@ -74,11 +74,26 @@ fi
 
 require_zlib_link "$ARMV7_CC" /tmp/hetrixtools_zlib_check_armv7 "ARMv7" "libz-dev:armhf"
 
-echo "[3/3] Building linux/armv7 using $ARMV7_CC..."
+echo "[3/4] Building linux/armv7 using $ARMV7_CC..."
 nim c -d:release -d:ssl --opt:speed --mm:orc \
   --os:linux --cpu:arm \
   --cc:gcc --gcc.exe:"$ARMV7_CC" \
   -o:"$OUT_DIR/hetrixtools_agent_linux_armv7" \
+  "$NIM_SOURCE"
+
+if ! find_cross_compiler RISCV64_CC riscv64-linux-gnu-gcc riscv64-linux-musl-gcc; then
+  echo "ERROR: RISC-V 64 cross compiler not found." >&2
+  echo "Install one of: riscv64-linux-gnu-gcc or riscv64-linux-musl-gcc" >&2
+  exit 1
+fi
+
+require_zlib_link "$RISCV64_CC" /tmp/hetrixtools_zlib_check_riscv64 "RISC-V 64" "libz-dev:riscv64"
+
+echo "[4/4] Building linux/riscv64 using $RISCV64_CC..."
+nim c -d:release -d:ssl --opt:speed --mm:orc \
+  --os:linux --cpu:riscv64 \
+  --cc:gcc --gcc.exe:"$RISCV64_CC" \
+  -o:"$OUT_DIR/hetrixtools_agent_linux_riscv64" \
   "$NIM_SOURCE"
 
 echo "Done."
@@ -86,3 +101,4 @@ echo "Artifacts:"
 echo "  $OUT_DIR/hetrixtools_agent_linux_amd64"
 echo "  $OUT_DIR/hetrixtools_agent_linux_arm64"
 echo "  $OUT_DIR/hetrixtools_agent_linux_armv7"
+echo "  $OUT_DIR/hetrixtools_agent_linux_riscv64"

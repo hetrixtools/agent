@@ -41,8 +41,11 @@ detect_arch() {
     armv8l|armv7l|armv7|armhf)
       echo "armv7"
       ;;
+    riscv64)
+      echo "riscv64"
+      ;;
     *)
-      echo "ERROR: Unsupported architecture: $(uname -m). Supported: amd64, arm64, armv7." >&2
+      echo "ERROR: Unsupported architecture: $(uname -m). Supported: amd64, arm64, armv7, riscv64." >&2
       return 1
       ;;
   esac

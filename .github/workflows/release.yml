@@ -30,17 +30,18 @@ jobs:
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabihf \
+            gcc-riscv64-linux-gnu \
             libssl-dev \
             zlib1g-dev
 
-          # --- arm64/armhf cross-compile libraries via multiarch ---
+          # --- arm64/armhf/riscv64 cross-compile libraries via multiarch ---
           # Ubuntu 24.04+ and Debian 13+ removed many *-cross library packages.
-          # We use dpkg multiarch instead, but must add arm64/armhf apt sources
+          # We use dpkg multiarch instead, but must add arm64/armhf/riscv64 apt sources
           # because the default Ubuntu mirror (azure.archive.ubuntu.com) does
-          # not serve these ARM binaries — only ports.ubuntu.com does.
+          # not serve these non-amd64 binaries — only ports.ubuntu.com does.
           # See: https://github.com/actions/runner-images/issues/10901
 
-          for arch in arm64 armhf; do
+          for arch in arm64 armhf riscv64; do
             if dpkg --print-foreign-architectures | grep -qx "$arch"; then
               echo "$arch architecture already added"
             else
@@ -70,16 +71,16 @@ jobs:
           URIs: http://ports.ubuntu.com/ubuntu-ports/
           Suites: ${codename} ${codename}-updates ${codename}-backports ${codename}-security
           Components: main restricted universe multiverse
-          Architectures: arm64 armhf
+          Architectures: arm64 armhf riscv64
           EOF
           elif [ -f /etc/apt/sources.list ]; then
             sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
             sudo sed -i 's/^deb-src /deb-src [arch=amd64] /' /etc/apt/sources.list
             codename="$(lsb_release -cs)"
             sudo tee -a /etc/apt/sources.list >/dev/null <<EOF
-          deb [arch=arm64,armhf] http://deb.debian.org/debian ${codename} main
-          deb [arch=arm64,armhf] http://deb.debian.org/debian ${codename}-updates main
-          deb [arch=arm64,armhf] http://security.debian.org/debian-security ${codename}-security main
+          deb [arch=arm64,armhf,riscv64] http://deb.debian.org/debian ${codename} main
+          deb [arch=arm64,armhf,riscv64] http://deb.debian.org/debian ${codename}-updates main
+          deb [arch=arm64,armhf,riscv64] http://security.debian.org/debian-security ${codename}-security main
           EOF
           fi
 
@@ -88,7 +89,9 @@ jobs:
             libz-dev:arm64 \
             libssl-dev:arm64 \
             libz-dev:armhf \
-            libssl-dev:armhf
+            libssl-dev:armhf \
+            libz-dev:riscv64 \
+            libssl-dev:riscv64
 
       - name: Build Linux Binaries
         run: |
@@ -168,6 +171,7 @@ jobs:
           tar -czf hetrixtools_agent_linux_amd64.tar.gz hetrixtools_agent_linux_amd64
           tar -czf hetrixtools_agent_linux_arm64.tar.gz hetrixtools_agent_linux_arm64
           tar -czf hetrixtools_agent_linux_armv7.tar.gz hetrixtools_agent_linux_armv7
+          tar -czf hetrixtools_agent_linux_riscv64.tar.gz hetrixtools_agent_linux_riscv64
           ls -lh *.tar.gz
 
       - name: Create GitHub Release
@@ -178,3 +182,4 @@ jobs:
             dist/hetrixtools_agent_linux_amd64.tar.gz
             dist/hetrixtools_agent_linux_arm64.tar.gz
             dist/hetrixtools_agent_linux_armv7.tar.gz
+            dist/hetrixtools_agent_linux_riscv64.tar.gz

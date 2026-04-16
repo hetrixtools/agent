@@ -13,7 +13,7 @@ Documentation available here: <https://docs.hetrixtools.com/category/server-moni
 ./scripts/build_nim_agent.sh
 ```
 
-- Build all Linux targets (`amd64` + `arm64` + `armv7`) in one command:
+- Build all Linux targets (`amd64` + `arm64` + `armv7` + `riscv64`) in one command:
 
 ```bash
 ./scripts/build_multiarch.sh
@@ -51,6 +51,7 @@ Documentation available here: <https://docs.hetrixtools.com/category/server-moni
     - for multi-arch build:
       - `aarch64-linux-gnu-gcc` (or `aarch64-linux-musl-gcc`) with `arm64` zlib/ssl libs
       - `arm-linux-gnueabihf-gcc` (or `arm-linux-musleabihf-gcc`) with `armhf` zlib/ssl libs
+      - `riscv64-linux-gnu-gcc` (or `riscv64-linux-musl-gcc`) with `riscv64` zlib/ssl libs
   - Test/debug helpers (optional):
     - `python3` (parity tests and dummy ingest server)
     - `curl` (manual post checks to dummy ingest server)
