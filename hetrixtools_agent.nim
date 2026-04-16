@@ -646,10 +646,8 @@ proc printUsage(programName: string) =
   echo "  --once               Run one collection cycle, then exit."
   echo "  --no-post            Do not post metrics; only write the local log payload."
   echo "  --config=PATH        Path to configuration file."
-  echo "  --config PATH        Path to configuration file."
   echo "  --log=PATH           Path to output log payload file."
-  echo "  --log PATH           Path to output log payload file."
-  echo "  --log-shm           Write the log payload to a temp file in /dev/shm."
+  echo "  --log-shm            Write the log payload to a temp file in /dev/shm."
   echo ""
   echo fmt"Defaults: --config={DefaultConfigPath} --log={DefaultLogPath}"
 
