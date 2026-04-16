@@ -643,45 +643,47 @@ when isMainModule:
     noPost = false
   let args = commandLineParams()
   let programName = getAppFilename().extractFilename()
-  var i = 0
-  while i < args.len:
-    let arg = args[i]
-    if arg == "-h" or arg == "--help":
-      printUsage(programName)
-      quit(0)
-    elif arg == "--once":
-      oneShot = true
-    elif arg == "--no-post":
-      noPost = true
-    elif arg == "--config":
-      if i + 1 >= args.len:
-        stderr.writeLine("ERROR: Missing value for --config.")
+  import std/[parseopt, os]
+
+  var
+    configPath = DefaultConfigPath
+    logPath = DefaultLogPath
+    oneShot = false
+    noPost = false
+    err = ""
+
+  for kind, key, val in getopt():
+    case kind
+    of cmdArgument:
+      err = fmt"Unknown argument: {key}"
+      break
+    of cmdLongOption, cmdShortOption:
+      case key
+      of "help", "h":
         printUsage(programName)
-        quit(1)
-      inc i
-      configPath = args[i]
-    elif arg.startsWith("--config="):
-      configPath = arg.split("=", maxsplit = 1)[1]
-      if configPath.len == 0:
-        stderr.writeLine("ERROR: Empty value for --config.")
-        printUsage(programName)
-        quit(1)
-    elif arg == "--log":
-      if i + 1 >= args.len:
-        stderr.writeLine("ERROR: Missing value for --log.")
-        printUsage(programName)
-        quit(1)
-      inc i
-      logPath = args[i]
-    elif arg.startsWith("--log="):
-      logPath = arg.split("=", maxsplit = 1)[1]
-      if logPath.len == 0:
-        stderr.writeLine("ERROR: Empty value for --log.")
-        printUsage(programName)
-        quit(1)
-    else:
-      stderr.writeLine(fmt"ERROR: Unknown argument '{arg}'.")
-      printUsage(programName)
-      quit(1)
-    inc i
+        quit(0)
+      of "once":
+        oneShot = true
+      of "no-post":
+        noPost = true
+      of "config":
+        if val.len == 0:
+          err = "Missing value for --config"
+          break
+        configPath = val
+      of "log":
+        if val.len == 0:
+          err = "Missing value for --log"
+          break
+        logPath = val
+      else:
+        err = fmt"Unknown option: --{key}"
+        break
+    of cmdEnd: discard
+
+  if err.len > 0:
+    stderr.writeLine(fmt"ERROR: {err}")
+    printUsage(programName)
+    quit(1)
+
   runAgent(configPath, logPath, oneShot, noPost)
