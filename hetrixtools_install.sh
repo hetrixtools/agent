@@ -174,7 +174,7 @@ Wants=network-online.target
 Type=simple
 User=$SERVICE_USER
 WorkingDirectory=/etc/hetrixtools
-ExecStart=/etc/hetrixtools/hetrixtools_agent --config=/etc/hetrixtools/hetrixtools.cfg --log=/etc/hetrixtools/hetrixtools_agent.log
+ExecStart=/etc/hetrixtools/hetrixtools_agent --config=/etc/hetrixtools/hetrixtools.cfg --log-shm
 Restart=always
 RestartSec=5s
 NoNewPrivileges=true

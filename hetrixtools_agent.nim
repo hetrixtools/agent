@@ -1,7 +1,9 @@
-import std/[base64, httpclient, json, net, os, osproc, parsecfg, strformat, strutils, tables, times, uri]
+import std/[base64, httpclient, json, net, os, osproc, parsecfg, parseopt, strformat, strutils, tables, times, uri]
 
 when defined(posix):
   {.passL: "-lz".}
+  proc mkstemp(pathTemplate: cstring): cint {.importc, header: "<stdlib.h>".}
+  proc close(fd: cint): cint {.importc, header: "<unistd.h>".}
 
 const
   Version = "2.3.8"
@@ -61,6 +63,21 @@ proc parseFloatSafe(s: string, d: float = 0.0): float =
 
 proc nowB64(): string =
   encode(now().format("yyyy-MM-dd HH:mm:ss zzz")).replace("\n", "")
+
+proc createShmLogPath(): string =
+  when defined(posix):
+    if not dirExists("/dev/shm"):
+      raise newException(IOError, "/dev/shm is not available on this system")
+
+    result = "/dev/shm/hetrixtools_agent.XXXXXX"
+    result.add('\0')
+    let fd = mkstemp(result.cstring)
+    if fd < 0:
+      raise newException(IOError, "Unable to create temporary log file in /dev/shm")
+    discard close(fd)
+    result.setLen(result.len - 1)
+  else:
+    raise newException(IOError, "--log-shm requires a POSIX platform")
 
 proc parseCfg(path: string): AgentConfig =
   var p: Config
@@ -632,18 +649,12 @@ proc printUsage(programName: string) =
   echo "  --config PATH        Path to configuration file."
   echo "  --log=PATH           Path to output log payload file."
   echo "  --log PATH           Path to output log payload file."
+  echo "  --log-shm           Write the log payload to a temp file in /dev/shm."
   echo ""
   echo fmt"Defaults: --config={DefaultConfigPath} --log={DefaultLogPath}"
 
 when isMainModule:
-  var
-    configPath = DefaultConfigPath
-    logPath = DefaultLogPath
-    oneShot = false
-    noPost = false
-  let args = commandLineParams()
   let programName = getAppFilename().extractFilename()
-  import std/[parseopt, os]
 
   var
     configPath = DefaultConfigPath
@@ -676,6 +687,12 @@ when isMainModule:
           err = "Missing value for --log"
           break
         logPath = val
+      of "log-shm":
+        try:
+          logPath = createShmLogPath()
+        except IOError as exc:
+          err = exc.msg
+          break
       else:
         err = fmt"Unknown option: --{key}"
         break
