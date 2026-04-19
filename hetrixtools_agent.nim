@@ -1,4 +1,4 @@
-import std/[base64, httpclient, json, net, os, osproc, parsecfg, parseopt, strformat, strutils, tables, times, uri]
+import std/[asyncdispatch, base64, httpclient, json, net, os, osproc, parsecfg, parseopt, strformat, strutils, tables, times, uri]
 
 when defined(posix):
   {.passL: "-lz".}
@@ -9,6 +9,7 @@ const
   Version = "2.3.8"
   DefaultConfigPath = "/etc/hetrixtools/hetrixtools.cfg"
   DefaultLogPath = "/etc/hetrixtools/hetrixtools_agent.log"
+  TimeoutMs = 5000
 
 type
   AgentConfig = object
@@ -566,7 +567,31 @@ proc gzipCompress(input: string): string =
 proc gzipBase64(s: string): string =
   encode(gzipCompress(s))
 
-proc postLogData(logPath: string, securedConnection: int): bool =
+proc requestWithTimeout(
+  client: AsyncHttpClient,
+  url: Uri | string,
+  timeoutMs = TimeoutMs,
+  httpMethod: HttpMethod = HttpGet,
+  body = "",
+  headers: HttpHeaders = nil,
+  multipart: MultipartData = nil
+): Future[AsyncResponse] {.async.} =
+  let requestFuture = client.request(
+    url,
+    httpMethod = httpMethod,
+    body = body,
+    headers = headers,
+    multipart = multipart
+  )
+  if not await withTimeout(requestFuture, timeoutMs):
+    client.close()
+    raise newException(
+      TimeoutError,
+      fmt"HTTP request timed out after {timeoutMs} ms while connecting or waiting for a response."
+    )
+  result = await requestFuture
+
+proc postLogDataAsync(logPath: string, securedConnection: int): Future[bool] {.async.} =
   if not fileExists(logPath):
     return false
   let body = readFile(logPath)
@@ -582,26 +607,34 @@ proc postLogData(logPath: string, securedConnection: int): bool =
           "https://sm.hetrixtools.net/v2/"
         else:
           "http://sm.hetrixtools.net/v2/"
-  var client: HttpClient
+  var client: AsyncHttpClient
   when defined(ssl):
     if securedConnection > 0:
-      client = newHttpClient(timeout = 15000)
+      client = newAsyncHttpClient()
     else:
       let tlsCtx = newContext(verifyMode = CVerifyNone)
-      client = newHttpClient(timeout = 15000, sslContext = tlsCtx)
+      client = newAsyncHttpClient(sslContext = tlsCtx)
   else:
-    client = newHttpClient(timeout = 15000)
+    client = newAsyncHttpClient()
   client.headers = newHttpHeaders({
     "Content-Type": "application/x-www-form-urlencoded"
   })
   try:
-    discard client.request(postUrl, httpMethod = HttpPost, body = body)
+    discard await client.requestWithTimeout(
+      postUrl,
+      timeoutMs = TimeoutMs,
+      httpMethod = HttpPost,
+      body = body
+    )
     result = true
   except CatchableError as e:
     stderr.writeLine("ERROR: Failed to POST log data: " & e.msg)
     result = false
   finally:
     client.close()
+
+proc postLogData(logPath: string, securedConnection: int): bool =
+  waitFor postLogDataAsync(logPath, securedConnection)
 
 proc writeAndPost(payload: JsonNode, logPath: string, securedConnection: int, noPost: bool) =
   let jsonRaw = $payload
