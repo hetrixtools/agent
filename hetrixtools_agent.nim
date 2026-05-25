@@ -1,4 +1,4 @@
-import std/[asyncdispatch, base64, httpclient, json, net, os, osproc, parsecfg, parseopt, strformat, strutils, tables, times, uri]
+import std/[asyncdispatch, base64, httpclient, json, monotimes, net, os, osproc, parsecfg, parseopt, strformat, streams, strutils, tables, times, uri]
 
 when defined(posix):
   {.passL: "-lz".}
@@ -6,7 +6,7 @@ when defined(posix):
   proc close(fd: cint): cint {.importc, header: "<unistd.h>".}
 
 const
-  Version = "2.3.8"
+  Version = "2.4.0"
   DefaultConfigPath = "/etc/hetrixtools/hetrixtools.cfg"
   DefaultLogPath = "/etc/hetrixtools/hetrixtools_agent.log"
   TimeoutMs = 5000
@@ -323,6 +323,112 @@ proc sleepMs(ms: int) =
   if ms > 0:
     sleep(ms)
 
+# ── Outgoing Ping support ────────────────────────────────────────────────────
+
+type
+  PingEntry = object
+    name: string
+    target: string
+    port: int  # 0 = ICMP, >0 = TCP port
+
+proc isValidPingName(s: string): bool =
+  if s.len == 0: return false
+  for c in s:
+    if not (c.isAlphaAscii() or c.isDigit() or c == '.' or c == '-' or c == '_'):
+      return false
+  return true
+
+proc isValidPingTarget(s: string): bool =
+  if s.len == 0: return false
+  for c in s:
+    if not (c.isAlphaAscii() or c.isDigit() or c == '.' or c == ':' or c == '_' or c == '-'):
+      return false
+  return true
+
+proc parseOutgoingPings(s: string): seq[PingEntry] =
+  if s.len == 0: return @[]
+  for raw in s.split("|"):
+    let entry = raw.strip()
+    if entry.len == 0: continue
+    let parts = entry.split(",")
+    if parts.len == 2:
+      let name = parts[0].strip()
+      let target = parts[1].strip()
+      if isValidPingName(name) and isValidPingTarget(target):
+        result.add(PingEntry(name: name, target: target, port: 0))
+    elif parts.len == 3:
+      let name = parts[0].strip()
+      let target = parts[1].strip()
+      let portStr = parts[2].strip()
+      try:
+        let port = parseInt(portStr)
+        if port >= 1 and port <= 65535 and isValidPingName(name) and isValidPingTarget(target):
+          result.add(PingEntry(name: name, target: target, port: port))
+      except ValueError:
+        discard
+
+proc parseIcmpPacketLoss(output: string): int =
+  for line in output.splitLines():
+    let idx = line.find("% packet loss")
+    if idx > 0:
+      var numStart = idx - 1
+      while numStart > 0 and line[numStart - 1].isDigit():
+        dec numStart
+      try:
+        return parseInt(line[numStart ..< idx])
+      except ValueError:
+        discard
+  return 100
+
+proc parseIcmpAvgRtt(output: string): int =
+  ## Parse average RTT in milliseconds from ping output (Linux/BSD formats).
+  for line in output.splitLines():
+    if "min/avg/max" in line and "=" in line:
+      let eqParts = line.split("=")
+      if eqParts.len >= 2:
+        let nums = eqParts[^1].strip().split("/")
+        if nums.len >= 2:
+          return int(parseFloatSafe(nums[1].strip()) + 0.5)
+  return 0
+
+proc tcpProbeConnect(target: string, port, timeoutMs: int): (bool, int) =
+  ## Attempt a TCP connection; returns (success, rttMs).
+  var sock: Socket
+  try:
+    sock = newSocket()
+  except CatchableError:
+    return (false, 0)
+  let startTime = getMonoTime()
+  try:
+    sock.connect(target, Port(port), timeout = timeoutMs)
+    sock.close()
+    let elapsed = int((getMonoTime() - startTime).inMilliseconds)
+    return (true, max(0, elapsed))
+  except CatchableError:
+    try: sock.close() except CatchableError: discard
+    return (false, 0)
+
+proc runTcpPing(entry: PingEntry, count: int): string =
+  ## Probe a TCP port with multiple timed samples; returns "name,target_port,loss,avgRtt;".
+  let sampleCount = max(2, min(8, (count + 4) div 5))
+  let outputTarget = fmt"{entry.target}_{entry.port}"
+  var successCount = 0
+  var rttSum = 0
+  for i in 1..sampleCount:
+    let (ok, rtt) = tcpProbeConnect(entry.target, entry.port, 3000)
+    if ok:
+      inc successCount
+      rttSum += rtt
+    if i < sampleCount:
+      sleep(5000)
+  let packetLoss = int(
+    ((sampleCount - successCount).float / sampleCount.float) * 100.0 + 0.5
+  )
+  let avgRtt = if successCount > 0: rttSum div successCount else: 0
+  fmt"{entry.name},{outputTarget},{packetLoss},{avgRtt};"
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 proc collectSamples(cfg: AgentConfig, nics: seq[string]): StatSample =
   var
     iterations = max(1, 60 div cfg.collectEveryXSeconds)
@@ -413,9 +519,48 @@ proc buildNicsBase64(stats: StatSample, nics: seq[string]): string =
   encode(s)
 
 proc buildPayload(cfg: AgentConfig, configPath: string): JsonNode =
+  let nics = detectNics(cfg.networkInterfaces)
+
+  # Validate and clamp ping count (10–40, default 20)
+  let pingCount =
+    if cfg.outgoingPingsCount >= 10 and cfg.outgoingPingsCount <= 40:
+      cfg.outgoingPingsCount
+    else:
+      20
+
+  # Parse ping entries and launch ICMP probes as background processes before
+  # collectSamples so they run concurrently with the ~60-second stats window.
+  let pingEntries = parseOutgoingPings(cfg.outgoingPings)
+  var icmpProcesses: seq[tuple[entry: PingEntry, process: Process]] = @[]
+  var tcpEntries: seq[PingEntry] = @[]
+  for entry in pingEntries:
+    if entry.port == 0:
+      try:
+        let p = startProcess("ping", args = [entry.target, "-c", $pingCount],
+                             options = {poUsePath})
+        icmpProcesses.add((entry: entry, process: p))
+      except CatchableError:
+        discard
+    else:
+      tcpEntries.add(entry)
+
+  let stats = collectSamples(cfg, nics)
+
+  # Collect ICMP results (processes should have completed during stats collection)
+  var pingData = ""
+  for item in icmpProcesses:
+    discard item.process.waitForExit()
+    let output = item.process.outputStream.readAll()
+    item.process.close()
+    pingData.add(fmt"{item.entry.name},{item.entry.target},{parseIcmpPacketLoss(output)},{parseIcmpAvgRtt(output)};")
+
+  # Run TCP port probes sequentially (after collection window)
+  for entry in tcpEntries:
+    pingData.add(runTcpPing(entry, pingCount))
+
+  let opingStr = if pingData.len > 0: encode(pingData) else: ""
+
   let
-    nics = detectNics(cfg.networkInterfaces)
-    stats = collectSamples(cfg, nics)
     osName = encode(getOsPretty())
     kernel = encode(cmdOut("uname -r"))
     hostname = encode(cmdOut("uname -n"))
@@ -474,7 +619,7 @@ proc buildPayload(cfg: AgentConfig, configPath: string): JsonNode =
     "temp": "",
     "serv": "",
     "cust": customVars,
-    "oping": "",
+    "oping": opingStr,
     "rps1": "",
     "rps2": ""
   }
