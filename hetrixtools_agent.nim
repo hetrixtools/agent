@@ -1,4 +1,4 @@
-import std/[asyncdispatch, base64, httpclient, json, monotimes, net, os, osproc, parsecfg, parseopt, strformat, strutils, tables, times, uri]
+import std/[asyncdispatch, base64, httpclient, json, monotimes, net, os, osproc, parsecfg, parseopt, strformat, streams, strutils, tables, times, uri]
 
 when defined(posix):
   {.passL: "-lz".}
