@@ -103,6 +103,10 @@ jobs:
         run: |
           python3 tests/parity_test.py
 
+      - name: Run Outgoing Pings Test
+        run: |
+          python3 tests/oping_test.py
+
       - name: Run Dummy Ingest Smoke Test
         shell: bash
         run: |
