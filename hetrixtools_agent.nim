@@ -381,18 +381,21 @@ proc parseIcmpPacketLoss(output: string): int =
   return 100
 
 proc parseIcmpAvgRtt(output: string): int =
-  ## Parse average RTT in milliseconds from ping output (Linux/BSD formats).
+  ## Parse average RTT in microseconds from ping output (Linux/BSD formats).
+  ## ping reports ms; multiply by 1000 to match the shell agent's wire format,
+  ## which the HetrixTools backend divides by 1000 to display as ms.
   for line in output.splitLines():
     if "min/avg/max" in line and "=" in line:
       let eqParts = line.split("=")
       if eqParts.len >= 2:
         let nums = eqParts[^1].strip().split("/")
         if nums.len >= 2:
-          return int(parseFloatSafe(nums[1].strip()) + 0.5)
+          return int(parseFloatSafe(nums[1].strip()) * 1000.0 + 0.5)
   return 0
 
 proc tcpProbeConnect(target: string, port, timeoutMs: int): (bool, int) =
-  ## Attempt a TCP connection; returns (success, rttMs).
+  ## Attempt a TCP connection; returns (success, rttUs).
+  ## Returns microseconds to match the shell agent's wire format.
   var sock: Socket
   try:
     sock = newSocket()
@@ -402,7 +405,7 @@ proc tcpProbeConnect(target: string, port, timeoutMs: int): (bool, int) =
   try:
     sock.connect(target, Port(port), timeout = timeoutMs)
     sock.close()
-    let elapsed = int((getMonoTime() - startTime).inMilliseconds)
+    let elapsed = int((getMonoTime() - startTime).inMicroseconds)
     return (true, max(0, elapsed))
   except CatchableError:
     try: sock.close() except CatchableError: discard
