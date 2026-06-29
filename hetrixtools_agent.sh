@@ -33,15 +33,15 @@ IgnoredDisks="tmpfs|aufs|squashfs|container_tmp"
 CheckServices=""
 CheckSoftRAID=0
 CheckDriveHealth=0
-CheckReboot=1
+CheckReboot=0
 RunningProcesses=0
 ConnectionPorts=""
 CustomVars="custom_variables.json"
 SecuredConnection=1
-CollectEveryXSeconds=3
+CollectEveryXSeconds=10
 DEBUG=0
 OutgoingPings=""
-OutgoingPingsCount=20
+OutgoingPingsCount=10
 
 strip_config_comment() {
 	local input=$1
@@ -976,9 +976,77 @@ then
 	fi
 fi
 
-# Calculate how many how many data sample loops
+# Calculate how many data sample loops
 RunTimes=$((60 / CollectEveryXSeconds))
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Collecting data for $RunTimes loops" >> "$ScriptPath"/debug.log; fi
+
+# Cache thermal zone paths (avoid find each iteration)
+ThermalZonePaths=()
+while IFS= read -r -d '' tz; do
+	ThermalZonePaths+=("$tz")
+done < <(find /sys/class/thermal/thermal_zone*/type -type f 2>/dev/null)
+ThermalZoneCount=${#ThermalZonePaths[@]}
+
+# Cache CPU speed (read once, not per iteration)
+CPUSpeedInit=$(grep 'cpu MHz' /proc/cpuinfo | awk -F": " '{print $2}' | awk '{printf "%18.0f",$1}' | xargs | sed -e 's/ /+/g')
+if [ -z "$CPUSpeedInit" ]; then CPUSpeedInit=0; fi
+
+# Temperature (sensors) - run once per minute, not every iteration
+if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
+then
+	SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
+	if [ $? -eq 0 ]
+	then
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Sensors command output:\n$SensorsCmd" >> "$ScriptPath"/debug.log; fi
+		SensorsArray=()
+		SensorsCoreSum=0
+		SensorsCoreCnt=0
+		while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
+		TempName=""
+		for i in "${SensorsArray[@]}"
+		do
+			if [ -n "$i" ]
+			then
+				if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
+				then
+					SensorsCat=$(echo "$i" | xargs)
+				else
+					if [[ "$i" == *":"* ]]
+					then
+						TempLabel=$(echo "$i" | awk -F":" '{print $1}' | xargs | sed 's/ /_/g')
+						TempRaw=$(echo "$i" | awk -F":" '{print $2}' | grep -oE '[-+]?[0-9]+(\.[0-9]+)?' | head -n 1)
+						if [ -n "$TempRaw" ]
+						then
+							TempName="$SensorsCat|$TempLabel"
+							TempVal=$(awk -v val="$TempRaw" 'BEGIN { printf "%18.3f", val }' | sed 's/\.//g' | xargs)
+							TempArray[$TempName]=${TempArray[$TempName]:-0}
+							TempArray[$TempName]=$((TempArray[$TempName] + TempVal))
+							TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
+							TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
+							if [[ "$TempName" == *"|Core_"* ]]
+							then
+								SensorsCoreSum=$((SensorsCoreSum + TempVal))
+								SensorsCoreCnt=$((SensorsCoreCnt + 1))
+							fi
+						fi
+					fi
+				fi
+			fi
+		done
+		if [ "$SensorsCoreCnt" -gt 0 ]
+		then
+			SensorAvgName="AllCoreAvg"
+			TempArray[$SensorAvgName]=${TempArray[$SensorAvgName]:-0}
+			TempArrayCnt[$SensorAvgName]=${TempArrayCnt[$SensorAvgName]:-0}
+			TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
+			TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
+		fi
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
+	else
+		SensorsCmdDisable=1
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
+	fi
+fi
 
 # Collect data loop
 for X in $(seq "$RunTimes")
@@ -1007,69 +1075,40 @@ do
 		}
 	' /proc/meminfo)
 
-	# CPU usage
-	CPU=$(echo "$VMSTAT" | awk '{print 100 - $15}')
-	tCPU=$(echo | awk "{print $tCPU + $CPU}")
-	
-	# CPU IO wait
-	CPUwa=$(echo "$VMSTAT" | awk '{print $16}')
-	tCPUwa=$(echo | awk "{print $tCPUwa + $CPUwa}")
-	
-	# CPU steal time
-	CPUst=$(echo "$VMSTAT" | awk '{print $17}')
-	tCPUst=$(echo | awk "{print $tCPUst + $CPUst}")
+	# Parse vmstat once with bash array (avoid 5+ subshells per loop)
+	IFS=' ' read -r -a V <<< "$VMSTAT"
+	CPU=$((100 - V[14]))
+	tCPU=$((tCPU + CPU))
+	CPUwa=${V[15]}
+	tCPUwa=$((tCPUwa + CPUwa))
+	CPUst=${V[16]}
+	tCPUst=$((tCPUst + CPUst))
+	CPUus=${V[12]}
+	tCPUus=$((tCPUus + CPUus))
+	CPUsy=${V[13]}
+	tCPUsy=$((tCPUsy + CPUsy))
 
-	# CPU user time
-	CPUus=$(echo "$VMSTAT" | awk '{print $13}')
-	tCPUus=$(echo | awk "{print $tCPUus + $CPUus}")
-	
-	# CPU system time
-	CPUsy=$(echo "$VMSTAT" | awk '{print $14}')
-	tCPUsy=$(echo | awk "{print $tCPUsy + $CPUsy}")
-	
-	# CPU clock
-	CPUSpeed=$(grep 'cpu MHz' /proc/cpuinfo | awk -F": " '{print $2}' | awk '{printf "%18.0f",$1}' | xargs | sed -e 's/ /+/g')
-	if [ -z "$CPUSpeed" ]
-	then
-		CPUSpeed=0
-	fi
-	tCPUSpeed=$(echo | awk "{print $tCPUSpeed + $CPUSpeed}")
+	# CPU clock speed (value cached before loop)
+	tCPUSpeed=$((tCPUSpeed + CPUSpeedInit))
 
-	# CPU Load
-	loadavg=$(cat /proc/loadavg)
-	loadavg1=$(echo "$loadavg" | awk '{print $1}')
-	tloadavg1=$(echo | awk "{print $tloadavg1 + $loadavg1}")
-	loadavg5=$(echo "$loadavg" | awk '{print $2}')
-	tloadavg5=$(echo | awk "{print $tloadavg5 + $loadavg5}")
-	loadavg15=$(echo "$loadavg" | awk '{print $3}')
-	tloadavg15=$(echo | awk "{print $tloadavg15 + $loadavg15}")
+	# CPU Load (read once with bash builtins, batch awk accumulation)
+	read -r loadavg1 loadavg5 loadavg15 _ < /proc/loadavg
+	read -r tloadavg1 tloadavg5 tloadavg15 <<< "$(awk -v a="$tloadavg1" -v la="$loadavg1" -v b="$tloadavg5" -v lb="$loadavg5" -v c="$tloadavg15" -v lc="$loadavg15" 'BEGIN {print a+la, b+lb, c+lc}')"
 
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) CPU: $CPU IO wait: $CPUwa Steal time: $CPUst User time: $CPUus System time: $CPUsy Load: $loadavg1 $loadavg5 $loadavg15" >> "$ScriptPath"/debug.log; fi
 
 	if [ "$aRAMHasAvailable" -eq 1 ]
 	then
 		aRAMUsed=$(( aRAMTotal - aRAMAvailable ))
-		if [ "$aRAMUsed" -lt 0 ]
-		then
-			aRAMUsed=0
-		fi
+		if [ "$aRAMUsed" -lt 0 ]; then aRAMUsed=0; fi
 
 		aRAMCacheReclaimable=$(( aRAMCacheRaw + aRAMSReclaimable - aRAMShmem ))
-		if [ "$aRAMCacheReclaimable" -lt 0 ]
-		then
-			aRAMCacheReclaimable=0
-		fi
+		if [ "$aRAMCacheReclaimable" -lt 0 ]; then aRAMCacheReclaimable=0; fi
 
 		aRAMReclaimableShown=$(( aRAMAvailable - aRAMFree ))
-		if [ "$aRAMReclaimableShown" -lt 0 ]
-		then
-			aRAMReclaimableShown=0
-		fi
+		if [ "$aRAMReclaimableShown" -lt 0 ]; then aRAMReclaimableShown=0; fi
 		aRAMReclaimableTotal=$(( aRAMBuffRaw + aRAMCacheReclaimable ))
-		if [ "$aRAMReclaimableShown" -gt "$aRAMReclaimableTotal" ]
-		then
-			aRAMReclaimableShown=$aRAMReclaimableTotal
-		fi
+		if [ "$aRAMReclaimableShown" -gt "$aRAMReclaimableTotal" ]; then aRAMReclaimableShown=$aRAMReclaimableTotal; fi
 
 		if [ "$aRAMReclaimableTotal" -gt 0 ]
 		then
@@ -1081,64 +1120,41 @@ do
 		fi
 	else
 		aRAMUsed=$(( aRAMTotal - aRAMFree - aRAMBuffRaw - aRAMCacheRaw ))
-		if [ "$aRAMUsed" -lt 0 ]
-		then
-			aRAMUsed=0
-		fi
+		if [ "$aRAMUsed" -lt 0 ]; then aRAMUsed=0; fi
 		aRAMBuffShown=$aRAMBuffRaw
 		aRAMCacheShown=$aRAMCacheRaw
 	fi
 
-	RAM=$(echo | awk "{print $aRAMUsed * 100 / $aRAMTotal}")
-	tRAM=$(echo | awk "{print $tRAM + $RAM}")
-
-	# RAM swap usage
+	# Swap used calculation
 	aRAMSwapUsed=$(( aRAMSwapTotal - aRAMSwapFree ))
-	if [ "$aRAMSwapUsed" -lt 0 ]
-	then
-		aRAMSwapUsed=0
-	fi
-	if [ "$aRAMSwapTotal" -gt 0 ]
-	then
-		RAMSwap=$(echo | awk "{print $aRAMSwapUsed * 100 / $aRAMSwapTotal}")
-	else
-		RAMSwap=0
-	fi
-	tRAMSwap=$(echo | awk "{print $tRAMSwap + $RAMSwap}")
+	if [ "$aRAMSwapUsed" -lt 0 ]; then aRAMSwapUsed=0; fi
 
-	RAMBuff=$(echo | awk "{print $aRAMBuffShown * 100 / $aRAMTotal}")
-	tRAMBuff=$(echo | awk "{print $tRAMBuff + $RAMBuff}")
-
-	# RAM cache usage
-	RAMCache=$(echo | awk "{print $aRAMCacheShown * 100 / $aRAMTotal}")
-	tRAMCache=$(echo | awk "{print $tRAMCache + $RAMCache}")
+	# Batch RAM percentage calculations (single awk call vs 4 separate)
+	read -r RAM RAMSwap RAMBuff RAMCache <<< $(awk -v u="$aRAMUsed" -v t="$aRAMTotal" -v su="$aRAMSwapUsed" -v st="$aRAMSwapTotal" -v b="$aRAMBuffShown" -v c="$aRAMCacheShown" 'BEGIN {printf "%.1f %.1f %.1f %.1f", u*100/t, (st>0 ? su*100/st : 0), b*100/t, c*100/t}')
+	read -r tRAM tRAMSwap tRAMBuff tRAMCache <<< "$(awk -v r="$tRAM" -v rr="$RAM" -v s="$tRAMSwap" -v ss="$RAMSwap" -v b="$tRAMBuff" -v bb="$RAMBuff" -v c="$tRAMCache" -v cc="$RAMCache" 'BEGIN {print r+rr, s+ss, b+bb, c+cc}')"
 
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAM: $RAM Swap: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache" >> "$ScriptPath"/debug.log; fi
 	
-	# Network usage
+	# Network usage (bash integer math, no subshells per NIC)
 	T=$(cat /proc/net/dev)
 	END=$(date +%s)
-	TIMEDIFF=$(echo | awk "{print $END - $START}")
-	tTIMEDIFF=$(echo | awk "{print $tTIMEDIFF + $TIMEDIFF}")
+	TIMEDIFF=$(( END - START ))
+	tTIMEDIFF=$(( tTIMEDIFF + TIMEDIFF ))
 	START=$(date +%s)
 	
 	# Loop through network interfaces
 	for NIC in "${NetworkInterfacesArray[@]}"
 	do
-		# Received Traffic
-		RX=$(echo | awk "{print $(echo "$T" | grep -w "$NIC:" | awk '{print $2}') - ${aRX[$NIC]}}")
-		RX=$(echo | awk "{print $RX / $TIMEDIFF}")
-		RX=$(echo "$RX" | awk '{printf "%18.0f",$1}' | xargs)
-		aRX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $2}')
-		tRX[$NIC]=$(echo | awk "{print ${tRX[$NIC]} + $RX}")
-		tRX[$NIC]=$(echo "${tRX[$NIC]}" | awk '{printf "%18.0f",$1}' | xargs)
-		# Transferred Traffic
-		TX=$(echo | awk "{print $(echo "$T" | grep -w "$NIC:" | awk '{print $10}') - ${aTX[$NIC]}}")
-		TX=$(echo | awk "{print $TX / $TIMEDIFF}")
-		TX=$(echo "$TX" | awk '{printf "%18.0f",$1}' | xargs)
-		aTX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $10}')
-		tTX[$NIC]=$(echo | awk "{print ${tTX[$NIC]} + $TX}")
-		tTX[$NIC]=$(echo "${tTX[$NIC]}" | awk '{printf "%18.0f",$1}' | xargs)
+		nic_line=$(echo "$T" | grep -w "$NIC:")
+		read -r _ rx_bytes _ _ _ _ _ _ _ tx_bytes _ <<< "$nic_line"
+		RX=$(( rx_bytes - aRX[$NIC] ))
+		RX=$(( RX / TIMEDIFF ))
+		aRX[$NIC]=$rx_bytes
+		tRX[$NIC]=$(( tRX[$NIC] + RX ))
+		TX=$(( tx_bytes - aTX[$NIC] ))
+		TX=$(( TX / TIMEDIFF ))
+		aTX[$NIC]=$tx_bytes
+		tTX[$NIC]=$(( tTX[$NIC] + TX ))
 	done
 
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Traffic: ${tRX[*]} ${tTX[*]}" >> "$ScriptPath"/debug.log; fi
@@ -1155,17 +1171,18 @@ do
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Port Connections: ${Connections[*]}" >> "$ScriptPath"/debug.log; fi
 	fi
 
-	# Temperature (thermal_zone)
-	if [ "$(find /sys/class/thermal/thermal_zone*/type 2> /dev/null | wc -l)" -gt 0 ]
+	# Temperature (thermal_zone) - uses cached path list, no find per iteration
+	if [ "$ThermalZoneCount" -gt 0 ]
 	then
 		TempArrayIndex=()
 		TempArrayVal=()
-		for zone in /sys/class/thermal/thermal_zone*/
+		for tz_path in "${ThermalZonePaths[@]}"
 		do
-			if [[ -f "${zone}/type" ]] && [[ -f "${zone}/temp" ]]
+			zone_dir="${tz_path%/type}"
+			if [[ -f "${zone_dir}/type" ]] && [[ -f "${zone_dir}/temp" ]]
 			then
-				type_value=$(<"${zone}/type")
-				temp_value=$(<"${zone}/temp")
+				type_value=$(<"${zone_dir}/type")
+				temp_value=$(<"${zone_dir}/temp")
 				if [[ -n $type_value ]]
 				then
 					TempArrayIndex+=("$type_value")
@@ -1193,71 +1210,10 @@ do
 		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature thermal_zone: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
 	fi
 
-	# Temperature (sensors)
-	if command -v "sensors" > /dev/null 2>&1 && [ "$SensorsCmdDisable" -eq 0 ]
+	# Check if minute boundary reached (use loop counter, avoid date subprocess)
+	if [ "$X" -lt "$RunTimes" ] && [ $(( X * CollectEveryXSeconds )) -ge 55 ]
 	then
-		SensorsCmd=$(LANG=en_US.UTF-8 sensors -A 2>/dev/null)
-		if [ $? -eq 0 ]
-		then
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Sensors command output:\n$SensorsCmd" >> "$ScriptPath"/debug.log; fi
-			SensorsArray=()
-			SensorsCoreSum=0
-			SensorsCoreCnt=0
-			while IFS='' read -r line; do SensorsArray+=("$line"); done <<< "$SensorsCmd"
-			for i in "${SensorsArray[@]}"
-			do
-				if [ -n "$i" ]
-				then
-					if [[ "$i" != *":"* ]] && [[ "$i" != *"="* ]]
-					then
-						SensorsCat=$(echo "$i" | xargs)
-					else
-						if [[ "$i" == *":"* ]]
-						then
-							TempLabel=$(echo "$i" | awk -F":" '{print $1}' | xargs | sed 's/ /_/g')
-							TempRaw=$(echo "$i" | awk -F":" '{print $2}' | grep -oE '[-+]?[0-9]+(\.[0-9]+)?' | head -n 1)
-							if [ -n "$TempRaw" ]
-							then
-								TempName="$SensorsCat|$TempLabel"
-								TempVal=$(awk -v val="$TempRaw" 'BEGIN { printf "%18.3f", val }' | sed 's/\.//g' | xargs)
-								TempArray[$TempName]=${TempArray[$TempName]:-0}
-								TempArray[$TempName]=$((TempArray[$TempName] + TempVal))
-								TempArrayCnt[$TempName]=${TempArrayCnt[$TempName]:-0}
-								TempArrayCnt[$TempName]=$((TempArrayCnt[$TempName] + 1))
-								if [[ "$TempName" == *"|Core_"* ]]
-								then
-									SensorsCoreSum=$((SensorsCoreSum + TempVal))
-									SensorsCoreCnt=$((SensorsCoreCnt + 1))
-								fi
-							fi
-						fi
-					fi
-				fi
-			done
-			if [ "$SensorsCoreCnt" -gt 0 ]
-			then
-				SensorAvgName="AllCoreAvg"
-				TempArray[$SensorAvgName]=${TempArray[$SensorAvgName]:-0}
-				TempArrayCnt[$SensorAvgName]=${TempArrayCnt[$SensorAvgName]:-0}
-				TempArray[$SensorAvgName]=$((TempArray[$SensorAvgName] + (SensorsCoreSum / SensorsCoreCnt)))
-				TempArrayCnt[$SensorAvgName]=$((TempArrayCnt[$SensorAvgName] + 1))
-			fi
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Temperature sensors: ${TempArray[*]}" >> "$ScriptPath"/debug.log; fi
-		else
-			SensorsCmdDisable=1
-			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Unable to get temperature via sensors" >> "$ScriptPath"/debug.log; fi
-		fi
-	fi
-
-	# Check if minute changed, so we can end the loop
-	MM=$(date +%M | sed 's/^0*//')
-	if [ -z "$MM" ]
-	then
-		MM=0
-	fi
-	if [ "$MM" -ne "$M" ] 
-	then
-		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Minute changed, ending loop" >> "$ScriptPath"/debug.log; fi
+		if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Minute boundary reached, ending loop" >> "$ScriptPath"/debug.log; fi
 		break
 	fi
 done
@@ -1495,10 +1451,8 @@ diskstats=$(cat /proc/diskstats)
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) /proc/diskstats:\n$diskstats" >> "$ScriptPath"/debug.log; fi
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * $DiskstatsSectorSize / $tTIMEDIFF}" 2> /dev/null)
-	IOPSRead[$i]=$(echo "${IOPSRead[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
-	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}" 2> /dev/null) * $DiskstatsSectorSize / $tTIMEDIFF}" 2> /dev/null)
-	IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
+	IOPSRead[$i]=$(echo "$diskstats" | awk -v disk="${vDISKs[$i]}" -v prev="${IOPSRead[$i]}" -v sector="$DiskstatsSectorSize" -v timediff="$tTIMEDIFF" '{if ($0 ~ disk) {val=sprintf("%.0f", ($6 - prev) * sector / timediff); print val}}')
+	IOPSWrite[$i]=$(echo "$diskstats" | awk -v disk="${vDISKs[$i]}" -v prev="${IOPSWrite[$i]}" -v sector="$DiskstatsSectorSize" -v timediff="$tTIMEDIFF" '{if ($0 ~ disk) {val=sprintf("%.0f", ($10 - prev) * sector / timediff); print val}}')
 	IOPS="$IOPS$i,${IOPSRead[$i]},${IOPSWrite[$i]};"
 done
 # Zpool IOPS
@@ -1562,8 +1516,7 @@ if [ -n "$ConnectionPorts" ]
 then
 	for cPort in "${ConnectionPortsArray[@]}"
 	do
-		CON=$(awk -v connections="${Connections["$cPort"]:-0}" -v loops="$X" 'BEGIN {print connections / loops}')
-		CON=$(echo "$CON" | awk '{printf "%18.0f",$1}' | xargs)
+		CON=$(awk -v connections="${Connections["$cPort"]:-0}" -v loops="$X" 'BEGIN {printf "%.0f", connections / loops}')
 		CONN="$CONN$cPort,$CON;"
 	done
 fi
@@ -1577,8 +1530,7 @@ if [ -n "$TempName" ]
 then
 	for TempName in "${!TempArray[@]}"
 	do
-		TMP=$(echo | awk "{print ${TempArray[$TempName]} / ${TempArrayCnt[$TempName]}}")
-		TMP=$(echo "$TMP" | awk '{printf "%18.0f",$1}' | xargs)
+		TMP=$(( TempArray[$TempName] / TempArrayCnt[$TempName] ))
 		TEMP="$TEMP$TempName,$TMP;"
 	done
 fi
