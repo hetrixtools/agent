@@ -4,6 +4,13 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.4.2:
+- Added drive health monitoring support for SAS drives
+- Improved MegaRAID discovery
+- Fixed missing (in some cases) drive-health entries for additional disks on hardware RAID systems
+- Reduced repeated RAID probing and duplicate drive-health entries
+- Fixed malformed (in some cases) drive-health payloads
+
 #### Version 2.4.1:
 - Improved the install and update scripts
 - Added the `CheckReboot` configuration
