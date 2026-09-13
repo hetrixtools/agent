@@ -24,7 +24,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.4.1"
+Version="2.4.2"
 
 # Default configuration values
 SID=""
@@ -1890,12 +1890,18 @@ if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) DISKs: $DISKs
 
 # Check Drive Health
 DH=""
+SeenSerials=""
 if [ "$CheckDriveHealth" -gt 0 ]
 then
 	if [ -x "$(command -v smartctl)" ] #Using S.M.A.R.T. (for regular HDD/SSD)
 	then
+		MegaRaidChecked=0
+		HPCCISSChecked=0
+		HardwareRaidPresent=0
+		RaidSasN=0
 		for i in $(lsblk -lp | grep ' disk' | awk '{print $1}')
 		do
+			case "$i" in /dev/nvme*) continue;; esac
 			DHealth=$(smartctl -A "$i")
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
 			if grep -q 'Attribute' <<< "$DHealth"
@@ -1903,39 +1909,83 @@ then
 				DHealth=$(smartctl -H "$i")"\n$DHealth"
 				DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
 				DInfo="$(smartctl -i "$i")"
-				DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
-				DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
+				DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+				DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
 				i=${i##*/}
-				DH="$DH""1,$i,$DHealth,$DModel,$DSerial;"
-			else # If initial read has failed, see if drives are behind hardware raid
-				MegaRaid=()
-				while IFS='' read -r line; do MegaRaid+=("$line"); done < <(smartctl --scan | grep megaraid | awk '{print $(3)}')
-				if [ ${#MegaRaid[@]} -gt 0 ]
+				if [ -z "$DSerial" ] || [[ "$SeenSerials" != *"|$DSerial|"* ]]
 				then
-					MegaRaidN=0
-					for MegaRaidID in "${MegaRaid[@]}"
-					do
-						DHealth=$(smartctl -A -d "$MegaRaidID" "$i")
-						if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A -d $MegaRaidID $i:\n$DHealth" >> "$ScriptPath"/debug.log; fi
-						if grep -q 'Attribute' <<< "$DHealth"
-						then
-							MegaRaidN=$((MegaRaidN + 1))
-							DHealth=$(smartctl -H -d "$MegaRaidID" "$i")"\n$DHealth"
-							DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
-							DInfo="$(smartctl -i -d "$MegaRaidID" "$i")"
-							DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | xargs)"
-							DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | xargs)"
-							ii=${i##*/}
-							DH="$DH""1,${ii}[$MegaRaidN],$DHealth,$DModel,$DSerial;"
-						fi
-					done
-					break
-				else
+					SeenSerials="$SeenSerials|$DSerial|"
+					DH="$DH""1,$i,$DHealth,$DModel,$DSerial;"
+				fi
+			else # If initial read has failed, see if drives are behind hardware raid
+				DHealthA="$DHealth"
+				if [ "$MegaRaidChecked" -eq 0 ]
+				then
+					MegaRaidChecked=1
+					MegaRaid=()
+					while IFS='' read -r line; do MegaRaid+=("$line"); done < <(smartctl --scan | grep megaraid | awk '{print $1" "$3}')
+					if [ ${#MegaRaid[@]} -gt 0 ]
+					then
+						HardwareRaidPresent=1
+						MegaRaidN=0
+						for MegaRaidEntry in "${MegaRaid[@]}"
+						do
+							MegaRaidDev=${MegaRaidEntry%% *}
+							MegaRaidID=${MegaRaidEntry##* }
+							DHealth=$(smartctl -A -d "$MegaRaidID" "$MegaRaidDev")
+							if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -A -d $MegaRaidID $MegaRaidDev:\n$DHealth" >> "$ScriptPath"/debug.log; fi
+							if grep -q 'Attribute' <<< "$DHealth"
+							then
+								MegaRaidN=$((MegaRaidN + 1))
+								DHealth=$(smartctl -H -d "$MegaRaidID" "$MegaRaidDev")"\n$DHealth"
+								DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+								DInfo="$(smartctl -i -d "$MegaRaidID" "$MegaRaidDev")"
+								DModel="$(echo "$DInfo" | grep -i "Device Model:" | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+								DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+								if [ -z "$DSerial" ] || [[ "$SeenSerials" != *"|$DSerial|"* ]]
+								then
+									SeenSerials="$SeenSerials|$DSerial|"
+									DH="$DH""1,megaraid[$MegaRaidN],$DHealth,$DModel,$DSerial;"
+								fi
+							else
+								if grep -q 'START OF READ SMART DATA SECTION' <<< "$DHealth"
+								then
+									RaidHealthA="$DHealth"
+									DInfo="$(smartctl -i -d "$MegaRaidID" "$MegaRaidDev" 2>/dev/null)"
+									if grep -qi 'Transport protocol:.*SAS' <<< "$DInfo"
+									then
+										DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+										if [ -z "$DSerial" ] || [[ "$SeenSerials" != *"|$DSerial|"* ]]
+										then
+											DHealthS="$(smartctl -H -l error -l ssd -d "$MegaRaidID" "$MegaRaidDev" 2>/dev/null | grep -E '^(SMART Health Status:|Percentage used endurance indicator:|Error counter log:|read:|write:|verify:|Non-medium error count:|Error Counter logging not supported)')"
+											if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -H -l error -l ssd -d $MegaRaidID $MegaRaidDev:\n$DHealthS" >> "$ScriptPath"/debug.log; fi
+											if grep -q 'SMART Health Status' <<< "$DHealthS"
+											then
+												SeenSerials="$SeenSerials|$DSerial|"
+												RaidSasN=$((RaidSasN + 1))
+												DRotation="$(echo "$DInfo" | grep -i "^Rotation Rate:" | head -n1)"
+												DHealth="$DHealthS\n$DRotation\n$RaidHealthA"
+												DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+												DModel="$(echo "$DInfo" | grep -i "Vendor:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs) $(echo "$DInfo" | grep -i "Product:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+												DModel=$(echo "$DModel" | xargs)
+												DH="$DH""3,sas[$RaidSasN],$DHealth,$DModel,$DSerial;"
+											fi
+										fi
+									fi
+								fi
+							fi
+						done
+					fi
+				fi
+				if [ "$HPCCISSChecked" -eq 0 ]
+				then
+					HPCCISSChecked=1
 					HPCCISS=0
 					if lspci 2>/dev/null | grep -qi 'Smart Array'; then HPCCISS=1; fi
 					if lsmod 2>/dev/null | grep -qE '^hpsa|^cciss'; then HPCCISS=1; fi
 					if [ $HPCCISS -eq 1 ]
 					then
+						HardwareRaidPresent=1
 						CCISS_MAX=32
 						if command -v hpssacli >/dev/null 2>&1
 						then
@@ -1953,14 +2003,69 @@ then
 								DHealth=$(smartctl -H -d cciss,$IDX "$i")"\n$DHealth"
 								DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
 								DInfo="$(smartctl -i -d cciss,$IDX "$i")"
-								DModel="$(echo "$DInfo" | grep -i -E 'Device Model:|Model Number:' | head -n1 | awk -F ':' '{print $2}' | xargs)"
-								DSerial="$(echo "$DInfo" | grep -i 'Serial Number:' | awk -F ':' '{print $2}' | xargs)"
+								DModel="$(echo "$DInfo" | grep -i -E 'Device Model:|Model Number:' | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+								DSerial="$(echo "$DInfo" | grep -i 'Serial Number:' | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
 								ii=${i##*/}
-								DH="$DH""1,${ii}[$CCISSN],$DHealth,$DModel,$DSerial;"
+								if [ -z "$DSerial" ] || [[ "$SeenSerials" != *"|$DSerial|"* ]]
+								then
+									SeenSerials="$SeenSerials|$DSerial|"
+									DH="$DH""1,${ii}[$CCISSN],$DHealth,$DModel,$DSerial;"
+								fi
+							else
+								if grep -q 'START OF READ SMART DATA SECTION' <<< "$DHealth"
+								then
+									RaidHealthA="$DHealth"
+									DInfo="$(smartctl -i -d cciss,$IDX "$i" 2>/dev/null)"
+									if grep -qi 'Transport protocol:.*SAS' <<< "$DInfo"
+									then
+										DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+										if [ -z "$DSerial" ] || [[ "$SeenSerials" != *"|$DSerial|"* ]]
+										then
+											DHealthS="$(smartctl -H -l error -l ssd -d cciss,$IDX "$i" 2>/dev/null | grep -E '^(SMART Health Status:|Percentage used endurance indicator:|Error counter log:|read:|write:|verify:|Non-medium error count:|Error Counter logging not supported)')"
+											if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -H -l error -l ssd -d cciss,$IDX $i:\n$DHealthS" >> "$ScriptPath"/debug.log; fi
+											if grep -q 'SMART Health Status' <<< "$DHealthS"
+											then
+												SeenSerials="$SeenSerials|$DSerial|"
+												RaidSasN=$((RaidSasN + 1))
+												DRotation="$(echo "$DInfo" | grep -i "^Rotation Rate:" | head -n1)"
+												DHealth="$DHealthS\n$DRotation\n$RaidHealthA"
+												DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+												DModel="$(echo "$DInfo" | grep -i "Vendor:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs) $(echo "$DInfo" | grep -i "Product:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+												DModel=$(echo "$DModel" | xargs)
+												DH="$DH""3,sas[$RaidSasN],$DHealth,$DModel,$DSerial;"
+											fi
+										fi
+									fi
+								fi
 							fi
 							IDX=$((IDX + 1))
 						done
-						break
+					fi
+				fi
+				DInfo="$(smartctl -i "$i" 2>/dev/null)"
+				HardwareRaidLogicalDevice=0
+				if [ "$HardwareRaidPresent" -eq 1 ] && grep -qiE '(^Vendor:[[:space:]]*(AVAGO|Broadcom|LSI|MegaRAID)([[:space:]]|$)|^(Product|Device Model):.*(PERC|MegaRAID|Smart Array|Logical Volume|Virtual Disk|ServeRAID|RAID|MR[0-9]|BOSS))' <<< "$DInfo"
+				then
+					HardwareRaidLogicalDevice=1
+				fi
+				if [ "$HardwareRaidLogicalDevice" -eq 0 ] && grep -qi 'Transport protocol:.*SAS' <<< "$DInfo"
+				then
+					DSerial="$(echo "$DInfo" | grep -i "Serial Number:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+					if [ -z "$DSerial" ] || [[ "$SeenSerials" != *"|$DSerial|"* ]]
+					then
+						DHealthS="$(smartctl -H -l error -l ssd "$i" 2>/dev/null | grep -E '^(SMART Health Status:|Percentage used endurance indicator:|Error counter log:|read:|write:|verify:|Non-medium error count:|Error Counter logging not supported)')"
+						if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) smartctl -H -l error -l ssd $i:\n$DHealthS" >> "$ScriptPath"/debug.log; fi
+						if grep -q 'SMART Health Status' <<< "$DHealthS"
+						then
+							SeenSerials="$SeenSerials|$DSerial|"
+							DRotation="$(echo "$DInfo" | grep -i "^Rotation Rate:" | head -n1)"
+							DHealth="$DHealthS\n$DRotation\n$DHealthA"
+							DHealth=$(echo -ne "$DHealth" | base64 | tr -d '\n\r\t ')
+							DModel="$(echo "$DInfo" | grep -i "Vendor:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs) $(echo "$DInfo" | grep -i "Product:" | head -n1 | awk -F ':' '{print $2}' | tr -d ',;' | xargs)"
+							DModel=$(echo "$DModel" | xargs)
+							i=${i##*/}
+							DH="$DH""3,$i,$DHealth,$DModel,$DSerial;"
+						fi
 					fi
 				fi
 			fi
@@ -2001,6 +2106,8 @@ then
 					SNCOL=$(echo "$NVMeList" | grep "^Node" | tr -s ' ' | tr ' ' '\n' | grep -n -x "SN" | cut -d: -f1)
 					DSerial="$(echo "$NVMeList" | grep "$i" | sed -E 's/[ ]{2,}/|/g' | awk -F '|' -v col="$SNCOL" '{print $col}')"
 				fi
+				DModel="$(echo "$DModel" | tr -d ',;' | xargs)"
+				DSerial="$(echo "$DSerial" | tr -d ',;' | xargs)"
 				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) NVMe $i Model: $DModel Serial: $DSerial" >> "$ScriptPath"/debug.log; fi
 				i=${i##*/}
 				DH="$DH""2,$i,$DHealth,$DModel,$DSerial;"
