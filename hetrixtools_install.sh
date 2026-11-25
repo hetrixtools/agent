@@ -98,7 +98,7 @@ normalize_service_names() {
 BRANCH="master"
 
 # Check if first argument is branch or SID
-if [ ${#1} -ne 32 ]
+if [ -n "$1" ] && [ ${#1} -ne 32 ]
 then
 	BRANCH=$1
 	shift
@@ -136,30 +136,23 @@ create_agent_user() {
 	useradd hetrixtools -r -d /etc/hetrixtools -s /bin/false || return 1
 }
 
-# Check if the selected branch exists
-if github_wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
-then
-	echo "Installing from $BRANCH branch..."
-else
-	echo "ERROR: Branch $BRANCH does not exist." >&2
-	exit 1
-fi
-
 # Fetch Server Unique ID
 SID=$1
 
 # Make sure SID is not empty
 echo "Checking Server ID (SID)..."
 if [ -z "$SID" ]
-	then echo "ERROR: First parameter missing."
-	exit
+then
+	echo "ERROR: Server ID (SID) parameter missing." >&2
+	exit 1
 fi
 echo "... done."
 
 # Check if user has selected to run agent as 'root' or as 'hetrixtools' user
 if [ -z "$2" ]
-	then echo "ERROR: Second parameter missing."
-	exit
+then
+	echo "ERROR: Second parameter missing, it must be 0 for 'hetrixtools' or 1 for 'root'." >&2
+	exit 1
 fi
 case "$2" in
 	1)
@@ -173,6 +166,15 @@ case "$2" in
 		exit 1
 		;;
 esac
+
+# Check if the selected branch exists
+if github_wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
+then
+	echo "Installing from $BRANCH branch..."
+else
+	echo "ERROR: Branch $BRANCH does not exist." >&2
+	exit 1
+fi
 
 # Check for wget and cron/systemd availability
 echo "Checking system utilities..."
@@ -439,6 +441,8 @@ Description=Runs HetrixTools agent every minute
 [Timer]
 OnBootSec=1min
 OnCalendar=*-*-* *:*:00 UTC
+OnCalendar=*-*-* *:*:00
+OnUnitActiveSec=1min
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=true
@@ -447,6 +451,7 @@ Unit=hetrixtools_agent.service
 [Install]
 WantedBy=timers.target
 EOF
+	chmod 644 /etc/systemd/system/hetrixtools_agent.service /etc/systemd/system/hetrixtools_agent.timer
 	systemctl daemon-reload >/dev/null 2>&1
 	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl restart hetrixtools_agent.timer >/dev/null 2>&1

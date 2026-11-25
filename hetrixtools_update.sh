@@ -503,7 +503,7 @@ echo "Using $BRANCH branch..."
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
 	then echo "ERROR: Please run the update script as root."
-	exit
+	exit 1
 fi
 echo "... done."
 
@@ -981,6 +981,8 @@ EOF
 		[Timer]
 		OnBootSec=1min
 		OnCalendar=*-*-* *:*:00 UTC
+		OnCalendar=*-*-* *:*:00
+		OnUnitActiveSec=1min
 		AccuracySec=1s
 		RandomizedDelaySec=0
 		Persistent=true
@@ -989,6 +991,7 @@ EOF
 		[Install]
 		WantedBy=timers.target
 		EOF
+	chmod 644 /etc/systemd/system/hetrixtools_agent.service /etc/systemd/system/hetrixtools_agent.timer
 	systemctl daemon-reload >/dev/null 2>&1
 	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl restart hetrixtools_agent.timer >/dev/null 2>&1
