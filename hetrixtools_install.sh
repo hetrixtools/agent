@@ -127,6 +127,15 @@ apply_agent_permissions() {
 	chmod 600 /etc/hetrixtools/hetrixtools.cfg || return 1
 }
 
+create_agent_user() {
+	if useradd hetrixtools -r -K SYS_UID_MAX=989 -K SYS_GID_MAX=989 -d /etc/hetrixtools -s /bin/false 2>/dev/null
+	then
+		return 0
+	fi
+	echo "Could not allocate a UID below 990, falling back to the system default range..."
+	useradd hetrixtools -r -d /etc/hetrixtools -s /bin/false || return 1
+}
+
 # Check if the selected branch exists
 if github_wget --spider -q https://raw.githubusercontent.com/hetrixtools/agent/$BRANCH/hetrixtools_agent.sh
 then
@@ -332,15 +341,13 @@ echo "... done."
 echo "Checking if hetrixtools user already exists..."
 if id -u hetrixtools >/dev/null 2>&1
 then
-	echo "The hetrixtools user already exists, killing its processes..."
-	pkill -9 -u `id -u hetrixtools`
 	echo "Deleting hetrixtools user..."
-	userdel hetrixtools
+	userdel -f hetrixtools || exit 1
 	echo "Creating the new hetrixtools user..."
-	useradd hetrixtools -r -d /etc/hetrixtools -s /bin/false
+	create_agent_user || exit 1
 else
 	echo "The hetrixtools user doesn't exist, creating it now..."
-	useradd hetrixtools -r -d /etc/hetrixtools -s /bin/false
+	create_agent_user || exit 1
 fi
 echo "Assigning permissions for the selected runtime user..."
 if ! apply_agent_permissions "$RUN_USER"

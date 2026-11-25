@@ -52,10 +52,8 @@ echo "... done."
 echo "Checking if hetrixtools user exists..."
 if id -u hetrixtools >/dev/null 2>&1
 then
-	echo "The hetrixtools user exists, killing its processes..."
-	pkill -9 -u `id -u hetrixtools`
 	echo "Deleting hetrixtools user..."
-	userdel hetrixtools
+	userdel -f hetrixtools || exit 1
 else
 	echo "The hetrixtools user doesn't exist..."
 fi
