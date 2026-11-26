@@ -236,6 +236,10 @@ function thinpoolactive() {
 	grep -qs '_tmeta$' /sys/block/dm-*/dm/name
 }
 
+function zpoolmount() {
+	printf '%s\n' "$2" | awk -v Pool="$1" '$1 == Pool || index($1, Pool "/") == 1 {print $(NF); exit}'
+}
+
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
 
@@ -1065,11 +1069,7 @@ then
 		declare -A zpools_mountpoints
 		for pool in "${zpoolsray[@]}"
 		do
-			zpools_mountpoints[$pool]=$(zfs get -H -o value mountpoint "$pool")
-			if [ "${zpools_mountpoints[$pool]:0:1}" != "/" ]
-			then
-				zpools_mountpoints[$pool]=$(echo "$df_mount_output" | awk -v Pool="$pool" '$1 == Pool || index($1, Pool "/") == 1 {print $(NF); exit}')
-			fi
+			zpools_mountpoints[$pool]=$(zpoolmount "$pool" "$df_mount_output")
 			pipe_dir=$(mktemp -d "${TMPDIR:-/tmp}/hetrixtools_zpool.XXXXXX" 2>/dev/null)
 			if [ -z "$pipe_dir" ]
 			then
@@ -1783,7 +1783,7 @@ then
 			do
 				zpoolstatus=$(zpool status "$i" 2>/dev/null)
 				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | tr -d '\n\r\t ')
-				mnt=$(echo -ne "$dfPB1" | grep -E "${i}[ /]" | head -n 1 | awk '{print $(NF)}')
+				mnt=$(zpoolmount "$i" "$dfPB1")
 				ZP="$ZP$mnt,$i,$zpoolstatus;"
 				zpooldiskusage[$mnt]=$(zfs get -H -o value -p used,avail "$i" | xargs | awk '{printf "%.0f %.0f %.0f", $1+$2, $1, $2}')
 			done

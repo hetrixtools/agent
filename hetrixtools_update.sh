@@ -576,7 +576,6 @@ echo "Checking system utilities..."
 USE_CRON=0
 USE_SYSTEMD=0
 SYSTEMCTL_AVAILABLE=0
-EXISTING_CRON=0
 CRON_ACTIVE=0
 if command -v systemctl >/dev/null 2>&1; then
 	if [ -d /run/systemd/system ] || systemctl list-units >/dev/null 2>&1; then
@@ -584,15 +583,9 @@ if command -v systemctl >/dev/null 2>&1; then
 	fi
 fi
 if command -v crontab >/dev/null 2>&1; then
-	if crontab -u root -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
-		EXISTING_CRON=1
-	elif id -u hetrixtools >/dev/null 2>&1 && crontab -u hetrixtools -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
-		EXISTING_CRON=1
-	fi
-	CRON_ACTIVE=$EXISTING_CRON
-	if command -v pgrep >/dev/null 2>&1 && [ "$CRON_ACTIVE" -ne 1 ]; then
+	if command -v pgrep >/dev/null 2>&1; then
 		for cron_process in cron crond cronie systemd-cron fcron busybox-cron busybox-crond; do
-			if pgrep -x "$cron_process" >/dev/null 2>&1 || pgrep -f "$cron_process" >/dev/null 2>&1; then
+			if pgrep -x "$cron_process" >/dev/null 2>&1 || pgrep -f '^([^ ]*/)?(busybox +)?'"$cron_process"'( |$)' >/dev/null 2>&1; then
 				CRON_ACTIVE=1
 				break
 			fi
