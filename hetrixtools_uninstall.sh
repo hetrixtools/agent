@@ -25,7 +25,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
   then echo "ERROR: Please run the uninstall script as root."
-  exit
+  exit 1
 fi
 echo "... done."
 
@@ -48,14 +48,24 @@ echo "Killing any hetrixtools agent scripts that may be currently running..."
 ps aux | grep -ie hetrixtools_agent.sh | awk '{print $2}' | xargs -r kill -9
 echo "... done."
 
+# Removing cronjob (if exists)
+echo "Removing any hetrixtools cronjob, if exists..."
+if command -v crontab >/dev/null 2>&1
+then
+	crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
+	if id -u hetrixtools >/dev/null 2>&1
+	then
+		crontab -u hetrixtools -r >/dev/null 2>&1
+	fi
+fi
+echo "... done."
+
 # Checking if hetrixtools user exists
 echo "Checking if hetrixtools user exists..."
 if id -u hetrixtools >/dev/null 2>&1
 then
-	echo "The hetrixtools user exists, killing its processes..."
-	pkill -9 -u `id -u hetrixtools`
 	echo "Deleting hetrixtools user..."
-	userdel hetrixtools
+	userdel -f hetrixtools || exit 1
 else
 	echo "The hetrixtools user doesn't exist..."
 fi
@@ -74,15 +84,6 @@ then
 	systemctl daemon-reload >/dev/null 2>&1
 fi
 rm -f /usr/local/sbin/hetrixtools_systemd_launcher.sh >/dev/null 2>&1
-echo "... done."
-
-# Removing cronjob (if exists)
-echo "Removing any hetrixtools cronjob, if exists..."
-if command -v crontab >/dev/null 2>&1
-then
-    crontab -u root -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u root - >/dev/null 2>&1
-    crontab -u hetrixtools -l 2>/dev/null | grep -v 'hetrixtools_agent.sh'  | crontab -u hetrixtools - >/dev/null 2>&1
-fi
 echo "... done."
 
 # Cleaning up uninstall file

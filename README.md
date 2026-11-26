@@ -4,6 +4,19 @@ Documentation available here: https://docs.hetrixtools.com/category/server-monit
 
 ### Changelog
 
+#### Version 2.4.3:
+- Fixed disk IO on LVM/LUKS, nested (`/boot/efi`) and network/ZFS mounts
+- Improved disk IO accuracy and removed extra IO from LVM checks
+- Faster network metrics collection on servers with many interfaces
+- Added the `IgnoredNICs` and `IgnoreBridgeInterfaces` configurations
+- Improved compatibility with older systems
+- Fixed agent user UID collisions with containers
+- Improved the update script's configuration handling
+- Fixed the `systemd` timer on older `systemd` versions
+- Fixed disk IO on btrfs subvolumes and on ZFS pools with no or a different mountpoint
+- Improved the install and uninstall scripts
+- Fixed the install and update scripts picking cron when no cron daemon is running
+
 #### Version 2.4.2:
 - Added drive health monitoring support for SAS drives
 - Improved MegaRAID discovery

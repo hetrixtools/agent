@@ -380,7 +380,7 @@ extract_config_value() {
 
 	awk -v key="$key" '
 		function trim(value) {
-			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			gsub(/^[ \t\r]+|[ \t\r]+$/, "", value)
 			return value
 		}
 		function strip_comment(value,    output, char, previous_char, in_single, in_double, i) {
@@ -395,7 +395,7 @@ extract_config_value() {
 				} else if (char == "\"" && in_single == 0) {
 					in_double = !in_double
 				} else if (char == "#" && in_single == 0 && in_double == 0) {
-					if (previous_char == "" || previous_char ~ /[[:space:]]/) {
+					if (previous_char == "" || previous_char ~ /[ \t\r]/) {
 						break
 					}
 				}
@@ -404,8 +404,8 @@ extract_config_value() {
 			}
 			return output
 		}
-		$0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
-			sub("^[[:space:]]*" key "[[:space:]]*=[[:space:]]*", "")
+		$0 ~ "^[ \t\r]*" key "[ \t\r]*=" {
+			sub("^[ \t\r]*" key "[ \t\r]*=[ \t\r]*", "")
 			$0 = trim(strip_comment($0))
 			if (($0 ~ /^".*"$/) || ($0 ~ /^'\''.*'\''$/)) {
 				$0 = substr($0, 2, length($0) - 2)
@@ -414,6 +414,33 @@ extract_config_value() {
 			exit
 		}
 	' "$file" | tr -d '\r'
+}
+
+extract_config_line() {
+	local key=$1
+	local file=$2
+
+	awk -v key="$key" '
+		{
+			sub(/\r$/, "")
+			position = index($0, "=")
+			if (position == 0) {
+				next
+			}
+			name = substr($0, 1, position - 1)
+			gsub(/^[ \t\r]+|[ \t\r]+$/, "", name)
+			if (name == key) {
+				value = substr($0, position + 1)
+				sub(/^[ \t]+/, "", value)
+				line = key "=" value
+			}
+		}
+		END {
+			if (line != "") {
+				print line
+			}
+		}
+	' "$file"
 }
 
 replace_config_line() {
@@ -444,6 +471,28 @@ replace_config_line() {
 	fi
 }
 
+preserve_config_line() {
+	local file=$1
+	local key=$2
+	local line=$3
+	local tmp_file="$file.tmp"
+
+	if PRESERVED_LINE="$line" awk -v key="$key" '
+		index($0, key "=") == 1 { print ENVIRON["PRESERVED_LINE"]; next }
+		{ print }
+	' "$file" > "$tmp_file"
+	then
+		if [ -e "$file" ]
+		then
+			copy_file_metadata "$file" "$tmp_file" || true
+		fi
+		mv "$tmp_file" "$file"
+	else
+		rm -f "$tmp_file"
+		echo "WARNING: Failed to preserve $key during update." >&2
+	fi
+}
+
 # Check for wget
 echo "Checking wget..."
 command -v wget >/dev/null 2>&1 || { echo "ERROR: wget is required to run this agent." >&2; exit 1; }
@@ -454,7 +503,7 @@ echo "Using $BRANCH branch..."
 echo "Checking root privileges..."
 if [ "$EUID" -ne 0 ]
 	then echo "ERROR: Please run the update script as root."
-	exit
+	exit 1
 fi
 echo "... done."
 
@@ -527,7 +576,6 @@ echo "Checking system utilities..."
 USE_CRON=0
 USE_SYSTEMD=0
 SYSTEMCTL_AVAILABLE=0
-EXISTING_CRON=0
 CRON_ACTIVE=0
 if command -v systemctl >/dev/null 2>&1; then
 	if [ -d /run/systemd/system ] || systemctl list-units >/dev/null 2>&1; then
@@ -535,15 +583,9 @@ if command -v systemctl >/dev/null 2>&1; then
 	fi
 fi
 if command -v crontab >/dev/null 2>&1; then
-	if crontab -u root -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
-		EXISTING_CRON=1
-	elif id -u hetrixtools >/dev/null 2>&1 && crontab -u hetrixtools -l 2>/dev/null | grep -q 'hetrixtools_agent.sh'; then
-		EXISTING_CRON=1
-	fi
-	CRON_ACTIVE=$EXISTING_CRON
-	if command -v pgrep >/dev/null 2>&1 && [ "$CRON_ACTIVE" -ne 1 ]; then
+	if command -v pgrep >/dev/null 2>&1; then
 		for cron_process in cron crond cronie systemd-cron fcron busybox-cron busybox-crond; do
-			if pgrep -x "$cron_process" >/dev/null 2>&1 || pgrep -f "$cron_process" >/dev/null 2>&1; then
+			if pgrep -x "$cron_process" >/dev/null 2>&1 || pgrep -f '^([^ ]*/)?(busybox +)?'"$cron_process"'( |$)' >/dev/null 2>&1; then
 				CRON_ACTIVE=1
 				break
 			fi
@@ -606,10 +648,24 @@ echo "... done."
 echo "Extracting configs from the old agent..."
 # SID (Server ID)
 SID=$(extract_config_value 'SID' "$EXTRACT")
+if [ -z "$SID" ]
+then
+	echo "ERROR: Unable to read the Server ID (SID) from the current agent, nothing was changed." >&2
+	echo "Please re-run the agent install code provided by the HetrixTools platform." >&2
+	exit 1
+fi
 # Network Interfaces
 NetworkInterfaces=$(extract_config_value 'NetworkInterfaces' "$EXTRACT")
+# Ignored Network Interfaces
+IgnoredNICsLine=$(extract_config_line 'IgnoredNICs' "$EXTRACT")
+# Ignore Bridge Interfaces
+IgnoreBridgeInterfaces=$(extract_config_value 'IgnoreBridgeInterfaces' "$EXTRACT" | tr -d '[:space:]')
+if [ "$IgnoreBridgeInterfaces" != "1" ]
+then
+	IgnoreBridgeInterfaces=0
+fi
 # Ignored Disks
-IgnoredDisksLine=$(grep '^IgnoredDisks=' "$EXTRACT")
+IgnoredDisksLine=$(extract_config_line 'IgnoredDisks' "$EXTRACT")
 # Check Services
 CheckServices=$(normalize_service_names "$(extract_config_value 'CheckServices' "$EXTRACT")")
 # Check Software RAID Health
@@ -695,20 +751,21 @@ echo "Checking if any disks should be ignored..."
 if [ -n "$IgnoredDisksLine" ]
 then
 	echo "Ignored disks found, inserting them into the agent config..."
-	if awk -v replacement="$IgnoredDisksLine" '
-		/^IgnoredDisks=/ { print replacement; next }
-		{ print }
-	' "$STAGED_CONFIG" > "$STAGED_CONFIG.tmp"
-	then
-		if [ -e "$STAGED_CONFIG" ]
-		then
-			copy_file_metadata "$STAGED_CONFIG" "$STAGED_CONFIG.tmp" || true
-		fi
-		mv "$STAGED_CONFIG.tmp" "$STAGED_CONFIG"
-	else
-		rm -f "$STAGED_CONFIG.tmp"
-		echo "WARNING: Failed to preserve IgnoredDisks during update." >&2
-	fi
+	preserve_config_line "$STAGED_CONFIG" 'IgnoredDisks' "$IgnoredDisksLine"
+fi
+echo "... done."
+
+# Check if any network interfaces should be ignored
+echo "Checking if any network interfaces should be ignored..."
+if [ -n "$IgnoredNICsLine" ]
+then
+	echo "Ignored network interfaces found, inserting them into the agent config..."
+	preserve_config_line "$STAGED_CONFIG" 'IgnoredNICs' "$IgnoredNICsLine"
+fi
+if [ "$IgnoreBridgeInterfaces" = "1" ]
+then
+	echo "Enabling ignoring of bridge interfaces in the agent config..."
+	replace_config_line "$STAGED_CONFIG" 'IgnoreBridgeInterfaces=0' 'IgnoreBridgeInterfaces=1'
 fi
 echo "... done."
 
@@ -917,6 +974,8 @@ EOF
 		[Timer]
 		OnBootSec=1min
 		OnCalendar=*-*-* *:*:00 UTC
+		OnCalendar=*-*-* *:*:00
+		OnUnitActiveSec=1min
 		AccuracySec=1s
 		RandomizedDelaySec=0
 		Persistent=true
@@ -925,6 +984,7 @@ EOF
 		[Install]
 		WantedBy=timers.target
 		EOF
+	chmod 644 /etc/systemd/system/hetrixtools_agent.service /etc/systemd/system/hetrixtools_agent.timer
 	systemctl daemon-reload >/dev/null 2>&1
 	systemctl enable --now hetrixtools_agent.timer >/dev/null 2>&1
 	systemctl restart hetrixtools_agent.timer >/dev/null 2>&1

@@ -24,11 +24,13 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ScriptPath=$(dirname "${BASH_SOURCE[0]}")
 
 # Agent Version (do not change)
-Version="2.4.2"
+Version="2.4.3"
 
 # Default configuration values
 SID=""
 NetworkInterfaces=""
+IgnoredNICs=""
+IgnoreBridgeInterfaces=0
 IgnoredDisks="tmpfs|aufs|squashfs|container_tmp"
 CheckServices=""
 CheckSoftRAID=0
@@ -190,7 +192,7 @@ load_config() {
 					value=${value:1:$((value_length - 2))}
 				fi
 				case "$key" in
-					SID|NetworkInterfaces|IgnoredDisks|CheckServices|CheckSoftRAID|CheckDriveHealth|CheckReboot|RunningProcesses|ConnectionPorts|CustomVars|SecuredConnection|CollectEveryXSeconds|DEBUG|OutgoingPings|OutgoingPingsCount)
+					SID|NetworkInterfaces|IgnoredNICs|IgnoreBridgeInterfaces|IgnoredDisks|CheckServices|CheckSoftRAID|CheckDriveHealth|CheckReboot|RunningProcesses|ConnectionPorts|CustomVars|SecuredConnection|CollectEveryXSeconds|DEBUG|OutgoingPings|OutgoingPingsCount)
 						printf -v "$key" '%s' "$value"
 						;;
 				esac
@@ -205,6 +207,8 @@ then
 	exit 1
 fi
 DisksIgnoreFilter="$IgnoredDisks"
+NICsIgnoreFilter="$IgnoredNICs"
+IgnoreBridgeInterfaces=$(normalize_binary_setting "$IgnoreBridgeInterfaces" 0)
 CheckReboot=$(normalize_binary_setting "$CheckReboot" 1)
 CheckSoftRAID=$(normalize_binary_setting "$CheckSoftRAID" 0)
 CheckDriveHealth=$(normalize_binary_setting "$CheckDriveHealth" 0)
@@ -228,6 +232,14 @@ function filterignoreddisks() {
 	fi
 }
 
+function thinpoolactive() {
+	grep -qs '_tmeta$' /sys/block/dm-*/dm/name
+}
+
+function zpoolmount() {
+	printf '%s\n' "$2" | awk -v Pool="$1" '$1 == Pool || index($1, Pool "/") == 1 {print $(NF); exit}'
+}
+
 # Script start time
 ScriptStartTime=$(date +[%Y-%m-%d\ %T)
 
@@ -244,6 +256,15 @@ then
 		echo -e "$ScriptStartTime-$(date +%T]) WARNING: IgnoredDisks contains an invalid regex ($DisksIgnoreFilter), disk filtering disabled" >> "$ScriptPath"/debug.log
 	fi
 	DisksIgnoreFilter=""
+fi
+
+if [ -n "$NICsIgnoreFilter" ] && ! validextendedregex "$NICsIgnoreFilter"
+then
+	if [ "$DEBUG" -eq 1 ]
+	then
+		echo -e "$ScriptStartTime-$(date +%T]) WARNING: IgnoredNICs contains an invalid regex ($NICsIgnoreFilter), network interface filtering disabled" >> "$ScriptPath"/debug.log
+	fi
+	NICsIgnoreFilter=""
 fi
 
 function regexescape() {
@@ -807,6 +828,42 @@ then
 	done
 fi
 
+# RX/TX
+declare -A NetDevRX
+declare -A NetDevTX
+function readnetworkcounters() {
+	local NetDevNIC NetDevRXBytes NetDevTXBytes
+	NetDevRX=()
+	NetDevTX=()
+	while read -r NetDevNIC NetDevRXBytes NetDevTXBytes
+	do
+		NetDevRX[$NetDevNIC]=$NetDevRXBytes
+		NetDevTX[$NetDevNIC]=$NetDevTXBytes
+	done < <(awk 'NR > 2 { sub(/:/, " "); if (NF >= 10) print $1, $2, $10 }' /proc/net/dev 2> /dev/null)
+}
+
+# IPv4/IPv6
+declare -A NetDevIPv4
+declare -A NetDevIPv6
+function readnetworkaddresses() {
+	local NetDevNIC NetDevFamily NetDevAddress
+	NetDevIPv4=()
+	NetDevIPv6=()
+	while read -r NetDevNIC NetDevFamily NetDevAddress
+	do
+		if [ "$NetDevFamily" = "inet" ]
+		then
+			NetDevIPv4[$NetDevNIC]="${NetDevIPv4[$NetDevNIC]:+${NetDevIPv4[$NetDevNIC]},}$NetDevAddress"
+		else
+			NetDevIPv6[$NetDevNIC]="${NetDevIPv6[$NetDevNIC]:+${NetDevIPv6[$NetDevNIC]},}$NetDevAddress"
+		fi
+	done < <(ip addr show 2> /dev/null | awk '
+		/^[0-9]+:/ { NIC = $2; sub(/:$/, "", NIC); sub(/@.*/, "", NIC); next }
+		$1 == "inet" { Address = $2; sub(/\/.*/, "", Address); print NIC, "inet", Address; next }
+		$1 == "inet6" { for (i = 1; i <= NF; i++) { if ($i == "global") { Address = $2; sub(/\/.*/, "", Address); print NIC, "inet6", Address; break } } }
+	')
+}
+
 # Network interfaces
 if [ -n "$NetworkInterfaces" ]
 then
@@ -814,13 +871,38 @@ then
 	IFS=',' read -r -a NetworkInterfacesArray <<< "$NetworkInterfaces"
 else
 	# Automatically detect the network interfaces
+	DetectedNICs=()
+	while IFS='' read -r line; do DetectedNICs+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | grep -v 'SLAVE' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
+	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Detected ${#DetectedNICs[@]} network interfaces: ${DetectedNICs[*]}" >> "$ScriptPath"/debug.log; fi
+	declare -A IgnoredNICsMap
+	if [ -n "$NICsIgnoreFilter" ] && [ "${#DetectedNICs[@]}" -gt 0 ]
+	then
+		while IFS='' read -r line; do if [ -n "$line" ]; then IgnoredNICsMap[$line]=1; fi; done < <(printf '%s\n' "${DetectedNICs[@]}" | grep -E -- "$NICsIgnoreFilter")
+	fi
 	NetworkInterfacesArray=()
-	while IFS='' read -r line; do NetworkInterfacesArray+=("$line"); done < <(ip a | grep BROADCAST | grep 'state UP' | grep -v 'SLAVE' | awk '{print $2}' | awk -F ":" '{print $1}' | awk -F "@" '{print $1}')
+	for NIC in "${DetectedNICs[@]}"
+	do
+		if [ -z "$NIC" ]
+		then
+			continue
+		fi
+		if [ -n "${IgnoredNICsMap[$NIC]}" ]
+		then
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Ignoring network interface $NIC (matches IgnoredNICs)" >> "$ScriptPath"/debug.log; fi
+			continue
+		fi
+		if [ "$IgnoreBridgeInterfaces" -eq 1 ] && [ -d "/sys/class/net/$NIC/bridge" ]
+		then
+			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Ignoring network interface $NIC (bridge)" >> "$ScriptPath"/debug.log; fi
+			continue
+		fi
+		NetworkInterfacesArray+=("$NIC")
+	done
 fi
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interfaces: ${NetworkInterfacesArray[*]}" >> "$ScriptPath"/debug.log; fi
 
 # Initial network usage
-T=$(cat /proc/net/dev)
+readnetworkcounters
 declare -A aRX
 declare -A aTX
 declare -A tRX
@@ -829,8 +911,10 @@ declare -A tTX
 # Loop through network interfaces
 for NIC in "${NetworkInterfacesArray[@]}"
 do
-	aRX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $2}')
-	aTX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $10}')
+	aRX[$NIC]=${NetDevRX[$NIC]}
+	aTX[$NIC]=${NetDevTX[$NIC]}
+	tRX[$NIC]=0
+	tTX[$NIC]=0
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Interface $NIC RX: ${aRX[$NIC]} TX: ${aTX[$NIC]}" >> "$ScriptPath"/debug.log; fi
 done
 
@@ -904,9 +988,48 @@ if [ $? -ne 0 ] || [ -z "$df_mount_output" ]
 then
 	df_mount_output=$(timeout 3 df -l 2>/dev/null)
 fi
-for i in $(echo "$df_mount_output" | filterignoreddisks | awk '$1 ~ /\// {print $(NF)}')
+DiskMounts=$(echo "$df_mount_output" | filterignoreddisks | awk '$1 ~ /\// {printf "%s ", $(NF)}')
+declare -A MountDisks
+while read -r MountPoint MountSource MountDisk
 do
-	vDISKs[$i]=$(lsblk -l | grep -w "$i" | awk '{print $1}')
+	if [ -z "$MountDisk" ] && [ "${MountSource#/dev/}" != "$MountSource" ]
+	then
+		MountDisk=$(readlink -f "$MountSource")
+		MountDisk=${MountDisk##*/}
+	fi
+	MountDisks[$MountPoint]=$MountDisk
+done < <(awk -v Mounts="$DiskMounts" '
+	BEGIN { n = split(Mounts, x, " "); for (i = 1; i <= n; i++) Wanted[x[i]] = 1 }
+	FILENAME == ARGV[1] { Disk[$1 ":" $2] = $3; next }
+	$5 in Wanted {
+		i = 7
+		while (i <= NF && $i != "-") i++
+		Dev[$5] = $3
+		Source[$5] = $(i + 2)
+	}
+	END { for (m in Dev) print m, Source[m], ((Dev[m] in Disk) ? Disk[Dev[m]] : "") }
+' /proc/diskstats /proc/self/mountinfo 2> /dev/null)
+# Report the IO of a shared device on a single mount
+declare -A DiskIOMounts
+while read -r i
+do
+	if [ -z "$i" ]
+	then
+		continue
+	fi
+	MountDisk=${MountDisks[$i]}
+	if [ -n "$MountDisk" ] && [ -z "${DiskIOMounts[$MountDisk]}" ]
+	then
+		DiskIOMounts[$MountDisk]=$i
+	fi
+done < <(printf '%s\n' $DiskMounts | LC_ALL=C awk '{print length($0), $0}' | LC_ALL=C sort -k1,1n -k2 | cut -d' ' -f2-)
+for i in $DiskMounts
+do
+	vDISKs[$i]=${MountDisks[$i]}
+	if [ -n "${vDISKs[$i]}" ] && [ "${DiskIOMounts[${vDISKs[$i]}]}" != "$i" ]
+	then
+		vDISKs[$i]=""
+	fi
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
 done
 declare -A IOPSRead
@@ -921,19 +1044,12 @@ DiskstatsSectorSize=512
 for i in "${!vDISKs[@]}"
 do
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) IOPS Disk $i: ${vDISKs[$i]}" >> "$ScriptPath"/debug.log; fi
-	IOPSRead[$i]=0
-	IOPSWrite[$i]=0
-	if [ ! -z "${vDISKs[$i]}" ]
+	IOPSRead[$i]=$(echo "$diskstats" | awk -v Disk="${vDISKs[$i]}" '$3 == Disk {print $6; exit}')
+	IOPSWrite[$i]=$(echo "$diskstats" | awk -v Disk="${vDISKs[$i]}" '$3 == Disk {print $10; exit}')
+	if [ -z "${IOPSRead[$i]}" ] || [ -z "${IOPSWrite[$i]}" ]
 	then
-		IOPSRead[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}')
-		IOPSWrite[$i]=$(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}')
-	fi
-	if [ -z "${IOPSRead[$i]}" ]
-	then
+		vDISKs[$i]=""
 		IOPSRead[$i]=0
-	fi
-	if [ -z "${IOPSWrite[$i]}" ]
-	then
 		IOPSWrite[$i]=0
 	fi
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Disk $i Sector Bytes: $DiskstatsSectorSize Read Sectors: ${IOPSRead[$i]} Write Sectors: ${IOPSWrite[$i]}" >> "$ScriptPath"/debug.log; fi
@@ -953,7 +1069,7 @@ then
 		declare -A zpools_mountpoints
 		for pool in "${zpoolsray[@]}"
 		do
-			zpools_mountpoints[$pool]=$(zfs get -H -o value mountpoint "$pool")
+			zpools_mountpoints[$pool]=$(zpoolmount "$pool" "$df_mount_output")
 			pipe_dir=$(mktemp -d "${TMPDIR:-/tmp}/hetrixtools_zpool.XXXXXX" 2>/dev/null)
 			if [ -z "$pipe_dir" ]
 			then
@@ -969,7 +1085,7 @@ then
 			fi
 			pipe_dirs[$pool]="$pipe_dir"
 			pipes[$pool]="$pipe"
-			timeout 60 zpool iostat -v -p "$pool" "$remaining_seconds" 2 | awk 'BEGIN{found=0} /capacity/ {found++} found==2' | grep -F -- "$pool" > "$pipe" &
+			timeout 60 zpool iostat -v -p "$pool" "$remaining_seconds" 2 | awk 'BEGIN{found=0} /capacity/ {found++} found==2' | awk -v Pool="$pool" '$1 == Pool {print; exit}' > "$pipe" &
 			pids[$pool]=$!
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool mounted at ${zpools_mountpoints[$pool]} starting iostat pid ${pids[$pool]} pipe ${pipes[$pool]} for $remaining_seconds seconds" >> "$ScriptPath"/debug.log; fi
 		done
@@ -1116,29 +1232,31 @@ do
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) RAM: $RAM Swap: $RAMSwap Buffers: $RAMBuff Cache: $RAMCache" >> "$ScriptPath"/debug.log; fi
 	
 	# Network usage
-	T=$(cat /proc/net/dev)
+	readnetworkcounters
 	END=$(date +%s)
-	TIMEDIFF=$(echo | awk "{print $END - $START}")
-	tTIMEDIFF=$(echo | awk "{print $tTIMEDIFF + $TIMEDIFF}")
+	TIMEDIFF=$((END - START))
+	tTIMEDIFF=$((tTIMEDIFF + TIMEDIFF))
 	START=$(date +%s)
 	
 	# Loop through network interfaces
 	for NIC in "${NetworkInterfacesArray[@]}"
 	do
 		# Received Traffic
-		RX=$(echo | awk "{print $(echo "$T" | grep -w "$NIC:" | awk '{print $2}') - ${aRX[$NIC]}}")
-		RX=$(echo | awk "{print $RX / $TIMEDIFF}")
-		RX=$(echo "$RX" | awk '{printf "%18.0f",$1}' | xargs)
-		aRX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $2}')
-		tRX[$NIC]=$(echo | awk "{print ${tRX[$NIC]} + $RX}")
-		tRX[$NIC]=$(echo "${tRX[$NIC]}" | awk '{printf "%18.0f",$1}' | xargs)
+		RX=0
+		if [ -n "${NetDevRX[$NIC]}" ] && [ -n "${aRX[$NIC]}" ] && [ "$TIMEDIFF" -gt 0 ]
+		then
+			RX=$(( (${NetDevRX[$NIC]} - ${aRX[$NIC]}) / TIMEDIFF ))
+		fi
+		aRX[$NIC]=${NetDevRX[$NIC]}
+		tRX[$NIC]=$(( ${tRX[$NIC]:-0} + RX ))
 		# Transferred Traffic
-		TX=$(echo | awk "{print $(echo "$T" | grep -w "$NIC:" | awk '{print $10}') - ${aTX[$NIC]}}")
-		TX=$(echo | awk "{print $TX / $TIMEDIFF}")
-		TX=$(echo "$TX" | awk '{printf "%18.0f",$1}' | xargs)
-		aTX[$NIC]=$(echo "$T" | grep -w "$NIC:" | awk '{print $10}')
-		tTX[$NIC]=$(echo | awk "{print ${tTX[$NIC]} + $TX}")
-		tTX[$NIC]=$(echo "${tTX[$NIC]}" | awk '{printf "%18.0f",$1}' | xargs)
+		TX=0
+		if [ -n "${NetDevTX[$NIC]}" ] && [ -n "${aTX[$NIC]}" ] && [ "$TIMEDIFF" -gt 0 ]
+		then
+			TX=$(( (${NetDevTX[$NIC]} - ${aTX[$NIC]}) / TIMEDIFF ))
+		fi
+		aTX[$NIC]=${NetDevTX[$NIC]}
+		tTX[$NIC]=$(( ${tTX[$NIC]:-0} + TX ))
 	done
 
 	if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) Network Traffic: ${tRX[*]} ${tTX[*]}" >> "$ScriptPath"/debug.log; fi
@@ -1495,11 +1613,8 @@ diskstats=$(cat /proc/diskstats)
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) /proc/diskstats:\n$diskstats" >> "$ScriptPath"/debug.log; fi
 for i in "${!vDISKs[@]}"
 do
-	IOPSRead[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $6}') - ${IOPSRead[$i]}}" 2> /dev/null) * $DiskstatsSectorSize / $tTIMEDIFF}" 2> /dev/null)
-	IOPSRead[$i]=$(echo "${IOPSRead[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
-	IOPSWrite[$i]=$(echo | awk "{print $(echo | awk "{print $(echo "$diskstats" | grep -w "${vDISKs[$i]}" | awk '{print $10}') - ${IOPSWrite[$i]}}" 2> /dev/null) * $DiskstatsSectorSize / $tTIMEDIFF}" 2> /dev/null)
-	IOPSWrite[$i]=$(echo "${IOPSWrite[$i]}" | awk '{printf "%18.0f",$1}' | xargs)
-	IOPS="$IOPS$i,${IOPSRead[$i]},${IOPSWrite[$i]};"
+	IOPSRead[$i]=$(echo "$diskstats" | awk -v Disk="${vDISKs[$i]}" -v Start="${IOPSRead[$i]}" -v Bytes="$DiskstatsSectorSize" -v Seconds="$tTIMEDIFF" '$3 == Disk && $6 > Start + 0 && Seconds + 0 > 0 {printf "%.0f", ($6 - Start) * Bytes / Seconds; exit}')
+	IOPSWrite[$i]=$(echo "$diskstats" | awk -v Disk="${vDISKs[$i]}" -v Start="${IOPSWrite[$i]}" -v Bytes="$DiskstatsSectorSize" -v Seconds="$tTIMEDIFF" '$3 == Disk && $10 > Start + 0 && Seconds + 0 > 0 {printf "%.0f", ($10 - Start) * Bytes / Seconds; exit}')
 done
 # Zpool IOPS
 if [ -x "$(command -v zpool)" ]
@@ -1515,12 +1630,13 @@ then
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool mounted at ${zpools_mountpoints[$pool]} reading from iostat pipe" >> "$ScriptPath"/debug.log; fi
 			zpooloutput=$(<"${pipes[$pool]}")
 			if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool iostat output: $zpooloutput" >> "$ScriptPath"/debug.log; fi
-			if [ "$zpooloutput" != "Terminated" ] && [ -n "$zpooloutput" ]
+			if [ "$zpooloutput" != "Terminated" ] && [ -n "$zpooloutput" ] && [ -n "${zpools_mountpoints[$pool]}" ]
 			then
 				read_bytes_per_sec=$(echo "$zpooloutput" | awk '{print $(NF-1)}')
 				write_bytes_per_sec=$(echo "$zpooloutput" | awk '{print $NF}')
 				if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) zpool $pool read bytes per sec: $read_bytes_per_sec write bytes per sec: $write_bytes_per_sec" >> "$ScriptPath"/debug.log; fi
-				IOPS="$IOPS${zpools_mountpoints[$pool]},$read_bytes_per_sec,$write_bytes_per_sec;"
+				IOPSRead[${zpools_mountpoints[$pool]}]=$read_bytes_per_sec
+				IOPSWrite[${zpools_mountpoints[$pool]}]=$write_bytes_per_sec
 			fi
 			kill "${pids[$pool]}" 2>/dev/null
 			rm -f "${pipes[$pool]}" 2>/dev/null
@@ -1528,6 +1644,10 @@ then
 		done
 	fi
 fi
+for i in "${!IOPSRead[@]}"
+do
+	IOPS="$IOPS$i,${IOPSRead[$i]:-0},${IOPSWrite[$i]:-0};"
+done
 IOPS=$(echo -ne "$IOPS" | base64 | tr -d '\n\r\t ')
 
 if [ "$DEBUG" -eq 1 ]; then echo -e "$ScriptStartTime-$(date +%T]) lsblk: $(lsblk -l | base64 | tr -d '\n\r\t ') Disks: $DISKs Inodes: $INODEs IOPS: $IOPS" >> "$ScriptPath"/debug.log; fi
@@ -1538,17 +1658,19 @@ TX=0
 NICS=""
 IPv4=""
 IPv6=""
+if [ "${#NetworkInterfacesArray[@]}" -gt 0 ]
+then
+	readnetworkaddresses
+fi
 for NIC in "${NetworkInterfacesArray[@]}"
 do
 	# Individual NIC network usage
-	RX=$(echo | awk "{print ${tRX[$NIC]} / $X}")
-	RX=$(echo "$RX" | awk '{printf "%18.0f",$1}' | xargs)
-	TX=$(echo | awk "{print ${tTX[$NIC]} / $X}")
-	TX=$(echo "$TX" | awk '{printf "%18.0f",$1}' | xargs)
+	RX=$(( ${tRX[$NIC]:-0} / X ))
+	TX=$(( ${tTX[$NIC]:-0} / X ))
 	NICS="$NICS$NIC,$RX,$TX;"
 	# Individual NIC IP addresses
-	IPv4="$IPv4$NIC,$(ip -4 addr show "$NIC" | grep -oP 'inet \K[\d.]+' | xargs | sed 's/ /,/g');"
-	IPv6="$IPv6$NIC,$(ip -6 addr show "$NIC" | grep -w "global" | grep -oP 'inet6 \K[0-9a-fA-F:]+' | xargs | sed 's/ /,/g');"
+	IPv4="$IPv4$NIC,${NetDevIPv4[$NIC]};"
+	IPv6="$IPv6$NIC,${NetDevIPv6[$NIC]};"
 done
 NICS=$(echo -ne "$NICS" | base64 | tr -d '\n\r\t ')
 IPv4=$(echo -ne "$IPv4" | base64 | tr -d '\n\r\t ')
@@ -1621,7 +1743,7 @@ then
 	while IFS= read -r mdname; do
 		mdname=${mdname%:}
 		if [ -n "$mdname" ]; then mdarrays+=("$mdname"); fi
-	done < <(awk '/^md[0-9]+[[:space:]]*:/ {print $1}' /proc/mdstat 2>/dev/null)
+	done < <(awk '/^md[0-9]+[ \t]*:/ {print $1}' /proc/mdstat 2>/dev/null)
 	for md in "${mdarrays[@]}"
 	do
 		mddev="/dev/$md"
@@ -1661,7 +1783,7 @@ then
 			do
 				zpoolstatus=$(zpool status "$i" 2>/dev/null)
 				zpoolstatus=$(echo -ne "$zpoolstatus" | base64 | tr -d '\n\r\t ')
-				mnt=$(echo -ne "$dfPB1" | grep -E "${i}[ /]" | head -n 1 | awk '{print $(NF)}')
+				mnt=$(zpoolmount "$i" "$dfPB1")
 				ZP="$ZP$mnt,$i,$zpoolstatus;"
 				zpooldiskusage[$mnt]=$(zfs get -H -o value -p used,avail "$i" | xargs | awk '{printf "%.0f %.0f %.0f", $1+$2, $1, $2}')
 			done
@@ -1694,7 +1816,7 @@ do
 done
 
 # Include thin LVM pools without mountpoints
-if [ "$CheckSoftRAID" -gt 0 ] && [ -x "$(command -v pvs)" ]
+if [ "$CheckSoftRAID" -gt 0 ] && [ -x "$(command -v pvs)" ] && thinpoolactive
 then
 	while IFS=',' read -r pv_name vg_name_pv
 	do
@@ -1726,7 +1848,7 @@ then
 	done < <(pvs --noheadings --separator ',' -o pv_name,vg_name 2>/dev/null)
 fi
 
-if [ -x "$(command -v lvs)" ]
+if [ -x "$(command -v lvs)" ] && thinpoolactive
 then
 	while IFS=',' read -r lv_name vg_name lv_path lv_attr lv_size data_percent lv_tags
 	do
